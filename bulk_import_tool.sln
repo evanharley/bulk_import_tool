@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.168
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "bulk_import_tool", "bulk_import_tool\bulk_import_tool.pyproj", "{D8408EB1-6ABD-4EC0-AB78-17FA78155CE8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D8408EB1-6ABD-4EC0-AB78-17FA78155CE8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D8408EB1-6ABD-4EC0-AB78-17FA78155CE8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {860089C2-8157-4768-9B87-A4D2007A1B43}
+	EndGlobalSection
+EndGlobal
