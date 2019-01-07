@@ -5,6 +5,7 @@ class BulkImportTest(unittest.TestCase):
     
     def setUp(self):
         self.impt = import_tools()
+        self.maxDiff = None
     
     def test_find_persons(self):
         value = self.impt._find_persons()
@@ -16,7 +17,9 @@ class BulkImportTest(unittest.TestCase):
     def test_find_relevant_column(self):
         test_methods = ['Person', 'Taxon', 'Sites', 'Events']
         value = []
-        test_values = [22, 11, 59, 61, 75, 76, 117]
+        test_values = [22, 11, 75, 76, 117]
+        test_values2 = [i for i in range(30, 73) if i != 48]
+        test_values.extend(test_values2)
         for method in test_methods:
             value.extend(self.impt._find_relevant_column(method))
         self.assertEqual(sorted(test_values), sorted(value))
@@ -38,24 +41,143 @@ class BulkImportTest(unittest.TestCase):
         for taxon in test_taxa:
             value.extend(self.impt._query_taxa(taxon))
         self.assertEqual(test_values, value)
-
-    def test_find_events(self):
-        value = self.impt._find_events()
-        self.assertEqual({}, value)
-
-    def test_find_site(self):
-        value = self.impt._find_site()
-        test_values = {}
-        self.assertEqual({}, value)
-    
+   
     def test_generate_site(self):
-        self.fail("Not implemented")
+        value = self.impt._generate_sites()
+        test_values = {'VS101450':
+                        {'Elevation (max)': 15,
+                        'Elevation (min)': 14,
+                        'Elevation note': None,
+                        'Elevation unit': 'm',
+                        'Biogeoclimatic': None,
+                        'Biozone':None,
+                        'Continent': 'North America',
+                        'Country': 'Canada',
+                        'County': None,
+                        'District': None,
+                        'Ecoprovince': None,
+                        'Fossil Ref. No.': None,
+                        'Mine Name': None,
+                        'Natural Region': None,
+                        'Park/ER/IR': None,
+                        'Province/State': 'British Columbia',
+                        'Range/Township/Section': None,
+                        'Water Body': None,
+                        'Description':	'Fannin tower, 2nd floor',
+                        'Discipline': None,
+                        'Location Name': 'Victoria: RBCM Collections building',
+                        'Reference': None, 
+                        'Remarks': None,
+                        'Notes (Date)': None,
+                        'Notes (Note)': None,
+                        'Notes (Title)': None,
+                        'Accuracy': None,
+                        'Approximate': None,
+                        'Latitude': 48.419603,
+                        'Latitude Stop': None,	
+                        'Longitude': -123.3706457,
+                        'Longitude Stop': None,
+                        'N.A. Datapoint': None,
+                        'Non-NTS Map Reference': None,
+                        'NTS Map Reference': None,
+                        'UTM Datapoint': None,
+                        'UTM Easting': None,
+                        'UTM Northing': None,
+                        'UTM Zone':	None,
+                        'Primary drainage':	None,
+                        'Secondary drainage': None,
+                        'Tertiary drainage': None,
+                        }, 'VS101451':
+                        {
+                        'Elevation (max)': 5,
+                        'Elevation (min)': 4,
+                        'Elevation note': None,
+                        'Elevation unit': 'm',
+                        'Biogeoclimatic': None,
+                        'Biozone': None,
+                        'Continent': 'North America',
+                        'Country': 'Canada',
+                        'County': None,
+                        'District': None,
+                        'Ecoprovince': None,
+                        'Fossil Ref. No.': None,
+                        'Mine Name': None,
+                        'Natural Region': None,
+                        'Park/ER/IR': None,
+                        'Province/State': 'British Columbia',
+                        'Range/Township/Section': None,
+                        'Water Body': None,
+                        'Description':	'Clifford Carl Hall',
+                        'Discipline': None,
+                        'Location Name': 'Victoria: RBCM Exhibits building',
+                        'Reference': None, 
+                        'Remarks': None,
+                        'Notes (Date)': None,
+                        'Notes (Note)': None,
+                        'Notes (Title)': None,
+                        'Accuracy': None,
+                        'Approximate': None,
+                        'Latitude': 48.419957,
+                        'Latitude Stop': None,	
+                        'Longitude': -123.3688604,
+                        'Longitude Stop': None,
+                        'N.A. Datapoint': None,
+                        'Non-NTS Map Reference': None,
+                        'NTS Map Reference': None,
+                        'UTM Datapoint': None,
+                        'UTM Easting': None,
+                        'UTM Northing': None,
+                        'UTM Zone':	None,
+                        'Primary drainage':	None,
+                        'Secondary drainage': None,
+                        'Tertiary drainage': None,
+                        }}
+
+        self.assertEqual(test_values, value)
+
+    def test_get_max_site_id(self):
+        value = self.impt._get_max_site_id()
+        test_value = ['VS', '101449']
+        self.assertEqual(test_value, value)
+
+    def test_add_ids(self):
+        self.fail("Not Implemented")
+
+    def test_import_collection_events(self):
+        self.fail("Not Implemented")
+
+    def test_import_geographic_sites(self):
+        self.fail("Not Implemented")
+
+    def test_import_taxonomy(self):
+        self.fail("Not Implemented")
+
+    def test_import_specimen(self):
+        self.fail("Not Implemented")
+
+    def test_write_to_test(self):
+        self.fail("Not Implemented")
+
+    def test_write_to_prod(self):
+        self.fail("Not Implemented")
 
     def test_generate_event(self):
-        self.fail("Not implemented")
+        value = self.impt._generate_events()
+        test_values = {}
+        self.assertEqual(test_values, value)
 
     def test_write_spreadsheet(self):
-        self.fail("Not implemented")
+        filename = self.impt.write_spreadsheet()
+        values = {}
+        self.assertEqual({}, values)
+
+    def test_spreadsheet(self):
+        values = self.impt._test_spreadsheet()
+        key_row = self.impt.ws[3]
+        test_values = {key_row[i].value: True for i in range(len(key_row))}
+        self.assertEqual(test_values, values)
+
+
 
 
 
