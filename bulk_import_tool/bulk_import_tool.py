@@ -7,12 +7,12 @@ class import_tools():
 
     def __init__(self, *args, **kwargs):
         
-        # data_filename = filedialog.askopenfilename(title='Open', defaultextension='.xlsx', 
+        # self.data_filename = filedialog.askopenfilename(title='Open', defaultextension='.xlsx', 
         #                                       filetypes=[('Excel Files', '*.xlsx')])
-        data_filename = "C:\\Users\\evharley\\source\\repos\\bulk_import_tool\\bulk_import_tool\\" +\
+        self.data_filename = "C:\\Users\\evharley\\source\\repos\\bulk_import_tool\\bulk_import_tool\\" +\
             "IMM import template - test.xlsx"
         try:
-            self.data_file = openpyxl.load_workbook(data_filename)
+            self.data_file = openpyxl.load_workbook(self.data_filename)
         except FileNotFoundError:
             return None
         self.ws = self.data_file.active
@@ -21,7 +21,6 @@ class import_tools():
         self.discipline = 'inv'
         connection = pyodbc.connect('DSN=IMMTest; Trusted_Connection=yes;')
         self.cursor = connection.cursor()
-        del(data_filename)
 
     def _find_persons(self):
         # Return all unique persons in the spreadsheet for import
@@ -61,7 +60,8 @@ class import_tools():
             relevant_cols = [i for i in range(30, 73) if i != 48]
             return relevant_cols
         elif method == 'Events':
-            table_id = ['CollectionEvent.event_num']
+            relevant_cols = [i for i in range(6, 30)]
+            return relevant_cols
 
         for col in range(1, len(headder_row)):
             if headder_row[col].value in table_id and col not in relevant_cols:
@@ -138,32 +138,110 @@ class import_tools():
         return generated_sites
 
     def _get_max_site_id(self):
-        query = "Select collector_site_id from GeographicSite where discipline_cd = '{}'".format(self.discipline)
-        max_site_id =  ['', 0]
-        results = self.cursor.execute(query).fetchall()
-        results = sorted([result[0] for result in results])
-        for result in results:
-            for char in range(len(result)):
-                if result[char].isnumeric():
-                    index = char
-                    break
-                else:
-                    continue
-            result_num = int(result[index:])
-            if result_num > int(max_site_id[1]):
-                max_site_id = [result[0: index], result[index:]]
+        prefix_query = "Select geo_site_prefix from NHDisciplineType where discipline_cd = '{}'".format(self.discipline)
+        prefix = self.cursor.execute(prefix_query).fetchall()[0][0]
+        query = "Select max(convert(int, SUBSTRING(collector_site_id, 3, 100))) from GeographicSite " + \
+        "where discipline_cd = '{}' and substring(collector_site_id, 1, 2) = '{}'".format(self.discipline, prefix)
+        result = self.cursor.execute(query).fetchone()
+        max_site_id = [prefix, str(result[0])]
         return max_site_id
+
+    def _get_max_event_id(self):
+        prefix_query = "Select coll_event_prefix from NHDisciplineType where discipline_cd = '{}'".format(self.discipline)
+        prefix = self.cursor.execute(prefix_query).fetchall()[0][0]
+        query = "Select max(convert(int, SUBSTRING(event_num, 3, 100))) from CollectionEvent " + \
+        "where discipline_cd = '{}' and substring(event_num, 1, 2) = '{}'".format(self.discipline, prefix)
+        result = self.cursor.execute(query).fetchone()
+        max_event_id = [prefix, str(result[0])]
+        return max_event_id
 
     def _generate_events(self):
         # Generates new collection events for import, from the unique events in the import spreadsheet
         generated_events = {}
+        new_event_id = self._get_max_event_id()
+        relevant_cols = self._find_relevant_column('Events')
+        key_row = self.ws[2]
+        for row in range(4, self.ws.max_row + 1):
+            working_row = self.ws[row]
+            field_event_cd = working_row[12].value
+            if working_row[12].value not in generated_events.keys():
+                generated_events[field_event_cd] = {key_row[col].value: working_row[col].value 
+                                                    for col in relevant_cols if col not in [11, 12, 22]}
+                generated_events[field_event_cd]['Collector'] = self._split_persons(working_row[22].value)
+            else:
+                generated_events[field_event_cd]['Collector'].extend(self._split_persons(working_row[22].value))
+                generated_events[field_event_cd]['Collector'] = list(set(generated_events[field_event_cd]['Collector']))
+                
+        return generated_events
+
+    def _write_persontaxa(self, data, section):
+        row = 1
+        col = 'A'
+        work_sheet = self.data_file[section]
+        sheet_ref = sheet_ref = chr(ord(col)) + str(row)
+        work_sheet[sheet_ref] = section
+        sheet_ref = sheet_ref = chr(ord(col) + 1) + str(row)
+        work_sheet[sheet_ref] = section + '_ids'
+        row += 1
+        for key in data.keys():
+            sheet_ref = col + str(row)
+            work_sheet[sheet_ref] = key
+            for i in range(len(data[key])):
+                sheet_ref = chr(ord(col) + 1 + i) + str(row)
+                work_sheet[sheet_ref] = data[key][i]
+            row += 1
+        return 0
+
+    def _write_siteevent(self, data, section):
+        row = 1
+        col = 1
+        worksheet = self.data_file[section]
+        if section == 'Events':
+            worksheet.cell(row = row, column = col, value = 'Field Event Code') 
+        else:
+            worksheet.cell(row = row, column = col, value =  'Geosite_id')
+        first_record = data[list(data.keys())[1]]
+        keys = [key for key in first_record.keys()]
+        for key in data.keys():
+            worksheet.cell(row = row, column = 1, value = key)
+            if row == 1:
+                for i in range(len(keys)):
+                    worksheet.cell(row = row, column = col + 1 + i, value = keys[i])
+                row += 1
+
+                for i in range(len(keys)):
+                    if data[key][keys[i]] is None:
+                        continue
+                    else:
+                        if isinstance(data[key][keys[i]], list):
+                            names = '; '.join(data[key][keys[i]])
+                            worksheet.cell(row = row, column = col + 1 + i, value = names)
+                        else:
+                            worksheet.cell(row = row, column = col + 1 + i, value = data[key][keys[i]])
+                row += 1
+        return 0
 
     def write_spreadsheet(self):
         # Writes the found and generated data to new tabs in the import spreadsheet
-        out_file_name = ''
         persons = self._find_persons()
+        self.data_file.create_sheet('Person')
+        self._write_persontaxa(persons, 'Person')
 
-        return out_file_name
+        taxa = self._find_taxa()
+        self.data_file.create_sheet('Taxon')
+        self._write_persontaxa(taxa, 'Taxon')
+
+        sites = self._generate_sites()
+        self.data_file.create_sheet('Site')
+        self._write_siteevent(sites, "Site")
+
+        events = self._generate_events()
+        self.data_file.create_sheet('Event')
+        self._write_siteevent(events, 'Event')
+
+        self.data_file.save(self.data_filename)
+        return 0 
+
 
     def _test_spreadsheet(self):
         key_row = self.ws[3]

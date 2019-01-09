@@ -1,5 +1,7 @@
 import unittest
+from datetime import datetime
 from bulk_import_tool import import_tools
+import openpyxl
 
 class BulkImportTest(unittest.TestCase):
     
@@ -140,6 +142,11 @@ class BulkImportTest(unittest.TestCase):
         test_value = ['VS', '101449']
         self.assertEqual(test_value, value)
 
+    def test_get_max_event_id(self):
+        value = self.impt._get_max_event_id()
+        test_value = ['VE', '17430']
+        self.assertEqual(test_value, value)
+
     def test_add_ids(self):
         self.fail("Not Implemented")
 
@@ -163,13 +170,77 @@ class BulkImportTest(unittest.TestCase):
 
     def test_generate_event(self):
         value = self.impt._generate_events()
-        test_values = {}
+        test_values = {'EV1':
+                        {'Bait': None,
+                        'Collection method': 'Hand',
+                        'Date': datetime(2018, 12, 31, 0, 0),
+                        'Date remarks': None,
+                        'Discipline': 'INV',
+                        'Net/Gear/Trap type': 'trap',
+                        'Note': None,
+                        'Permit Number': None,
+                        'Season': 'Winter',
+                        'Start time': None,
+                        'Stop time': None,
+                        'Time Standard': None,
+                        'Trapping/Sampling Duration': None,
+                        'Vessel Name': None,
+                        'Collector': ['Hugh MacIntosh', 'Evan Harley'],
+                        'Air temperature': None,
+                        'Air temperature unit': None,
+                        'Cloud cover': None,
+                        'Weather remarks': None,
+                        'Wind direction': None,
+                        'Wind speed': None,
+                        'Wind speed unit': None,
+                        },
+                        'EV2':
+                        {'Bait': None,
+                        'Collection method': 'Hand',
+                        'Date': datetime(2018, 12, 31, 0, 0),
+                        'Date remarks': None,
+                        'Discipline': 'INV',
+                        'Net/Gear/Trap type': 'trap',
+                        'Note': None,
+                        'Permit Number': None,
+                        'Season': 'Winter',
+                        'Start time': None,
+                        'Stop time': None,
+                        'Time Standard': None,
+                        'Trapping/Sampling Duration': None,
+                        'Vessel Name': None,
+                        'Collector': ['Meg Sugrue', 'David Stewart'],
+                        'Air temperature': None,
+                        'Air temperature unit': None,
+                        'Cloud cover': None,
+                        'Weather remarks': None,
+                        'Wind direction': None,
+                        'Wind speed': None,
+                        'Wind speed unit': None,
+                        }
+                        }
         self.assertEqual(test_values, value)
 
     def test_write_spreadsheet(self):
-        filename = self.impt.write_spreadsheet()
+        test_values = {
+            'sheet_names':['IMM_template', 'Person', 'Taxon', 'Site', 'Event'],
+            'row_count':{'IMM_template': 5, 
+                       'Person': 7, 
+                       'Taxon':3, 
+                       'Site': 3, 
+                       'Event': 3}
+            }
         values = {}
-        self.assertEqual({}, values)
+        self.impt.write_spreadsheet()
+        file = openpyxl.load_workbook(self.impt.data_filename)
+
+        values['sheet_names'] = file.sheetnames
+        values['row_count'] = {}
+        for sheet in file.sheetnames:
+            worksheet = file[sheet]
+            values['row_count'][sheet] = worksheet.max_row
+
+        self.assertEqual(test_values, values)
 
     def test_spreadsheet(self):
         values = self.impt._test_spreadsheet()
