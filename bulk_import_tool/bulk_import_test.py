@@ -19,8 +19,8 @@ class BulkImportTest(unittest.TestCase):
     def test_find_relevant_column(self):
         test_methods = ['Person', 'Taxon', 'Sites', 'Events']
         value = []
-        test_values = [22, 11, 75, 76, 117]
-        test_values2 = [i for i in range(30, 73) if i != 48]
+        test_values = [22, 75, 76, 117]
+        test_values2 = [i for i in range(6, 73) if i != 48]
         test_values.extend(test_values2)
         for method in test_methods:
             value.extend(self.impt._find_relevant_column(method))
@@ -170,12 +170,13 @@ class BulkImportTest(unittest.TestCase):
 
     def test_generate_event(self):
         value = self.impt._generate_events()
-        test_values = {'EV1':
+        test_values = {'VE17431':
                         {'Bait': None,
                         'Collection method': 'Hand',
                         'Date': datetime(2018, 12, 31, 0, 0),
                         'Date remarks': None,
                         'Discipline': 'INV',
+                        'Field Event Code': 'EV1',
                         'Net/Gear/Trap type': 'trap',
                         'Note': None,
                         'Permit Number': None,
@@ -194,12 +195,13 @@ class BulkImportTest(unittest.TestCase):
                         'Wind speed': None,
                         'Wind speed unit': None,
                         },
-                        'EV2':
+                        'VE17432':
                         {'Bait': None,
                         'Collection method': 'Hand',
                         'Date': datetime(2018, 12, 31, 0, 0),
                         'Date remarks': None,
                         'Discipline': 'INV',
+                        'Field Event Code': 'EV2',
                         'Net/Gear/Trap type': 'trap',
                         'Note': None,
                         'Permit Number': None,
@@ -247,6 +249,7 @@ class BulkImportTest(unittest.TestCase):
         key_row = self.impt.ws[3]
         test_values = {key_row[i].value: True for i in range(len(key_row))}
         self.assertEqual(test_values, values)
+
 
 
 

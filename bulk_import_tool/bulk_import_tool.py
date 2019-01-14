@@ -162,15 +162,16 @@ class import_tools():
         relevant_cols = self._find_relevant_column('Events')
         key_row = self.ws[2]
         for row in range(4, self.ws.max_row + 1):
+            new_event_id[1] = str(int(new_event_id[1]) + 1)
+            event_id = new_event_id[0] + new_event_id[1]
             working_row = self.ws[row]
-            field_event_cd = working_row[12].value
-            if working_row[12].value not in generated_events.keys():
-                generated_events[field_event_cd] = {key_row[col].value: working_row[col].value 
-                                                    for col in relevant_cols if col not in [11, 12, 22]}
-                generated_events[field_event_cd]['Collector'] = self._split_persons(working_row[22].value)
+            if event_id not in generated_events.keys():
+                generated_events[event_id] = {key_row[col].value: working_row[col].value 
+                                                    for col in relevant_cols if col not in [11, 22]}
+                generated_events[event_id]['Collector'] = self._split_persons(working_row[22].value)
             else:
-                generated_events[field_event_cd]['Collector'].extend(self._split_persons(working_row[22].value))
-                generated_events[field_event_cd]['Collector'] = list(set(generated_events[field_event_cd]['Collector']))
+                generated_events[event_id]['Collector'].extend(self._split_persons(working_row[22].value))
+                generated_events[event_id]['Collector'] = list(set(generated_events[event_id]['Collector']))
                 
         return generated_events
 
@@ -196,47 +197,52 @@ class import_tools():
         row = 1
         col = 1
         worksheet = self.data_file[section]
-        if section == 'Events':
-            worksheet.cell(row = row, column = col, value = 'Field Event Code') 
+        if section == 'Event':
+            worksheet.cell(row = row, column = col, value = 'Event Number') 
         else:
             worksheet.cell(row = row, column = col, value =  'Geosite_id')
         first_record = data[list(data.keys())[1]]
         keys = [key for key in first_record.keys()]
         for key in data.keys():
-            worksheet.cell(row = row, column = 1, value = key)
+            if row == 1:
+                worksheet.cell(row = row + 1, column = 1, value = key)
+            else:
+                worksheet.cell(row = row, column = 1, value = key)
             if row == 1:
                 for i in range(len(keys)):
                     worksheet.cell(row = row, column = col + 1 + i, value = keys[i])
                 row += 1
 
-                for i in range(len(keys)):
-                    if data[key][keys[i]] is None:
-                        continue
+            for i in range(len(keys)):
+                if data[key][keys[i]] is None:
+                    continue
+                else:
+                    if isinstance(data[key][keys[i]], list):
+                        names = '; '.join(data[key][keys[i]])
+                        worksheet.cell(row = row, column = col + 1 + i, value = names)
                     else:
-                        if isinstance(data[key][keys[i]], list):
-                            names = '; '.join(data[key][keys[i]])
-                            worksheet.cell(row = row, column = col + 1 + i, value = names)
-                        else:
-                            worksheet.cell(row = row, column = col + 1 + i, value = data[key][keys[i]])
-                row += 1
+                        worksheet.cell(row = row, column = col + 1 + i, value = data[key][keys[i]])
+            row += 1
         return 0
 
     def write_spreadsheet(self):
         # Writes the found and generated data to new tabs in the import spreadsheet
+        if self.data_file.sheetnames != ['IMM_template', 'Person', 'Taxon', 'Site', 'Event']:
+            self.data_file.create_sheet('Person')
+            self.data_file.create_sheet('Taxon')
+            self.data_file.create_sheet('Site')
+            self.data_file.create_sheet('Event')
+
         persons = self._find_persons()
-        self.data_file.create_sheet('Person')
         self._write_persontaxa(persons, 'Person')
 
         taxa = self._find_taxa()
-        self.data_file.create_sheet('Taxon')
         self._write_persontaxa(taxa, 'Taxon')
 
         sites = self._generate_sites()
-        self.data_file.create_sheet('Site')
         self._write_siteevent(sites, "Site")
 
         events = self._generate_events()
-        self.data_file.create_sheet('Event')
         self._write_siteevent(events, 'Event')
 
         self.data_file.save(self.data_filename)
@@ -270,6 +276,9 @@ class import_tools():
             except:
                 test_results[value] = False
         return test_results
+    
+    def _add_ids(self):
+        print("TEST")
 
     def write_to_db():
         # Writes the data from the import spreadsheet to the database
