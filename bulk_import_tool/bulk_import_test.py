@@ -12,7 +12,7 @@ class BulkImportTest(unittest.TestCase):
     def test_find_persons(self):
         value = self.impt._find_persons()
         test_values = {'Hugh MacIntosh': [6755], 'Evan Harley': [6168],
-                       'Meg Sugrue': [], 'David Stewart': [],
+                       'Meg Sugrue': ['NEW?'], 'David Stewart': ['NEW?'],
                        'Henry Choong': [2767, 4659], 'Heidi Gartner': [2430, 4829, 5698]}
         self.assertEqual(test_values, value)
 

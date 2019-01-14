@@ -44,6 +44,8 @@ class import_tools():
             if results != []:
                 for i in range(len(results)):
                     persons[name].append(results[i][0])
+            else:
+                persons[name] = ['NEW?']
         return persons
         
     def _find_relevant_column(self, method):
