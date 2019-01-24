@@ -15,12 +15,12 @@ class import_tools():
             self.data_file = openpyxl.load_workbook(self.data_filename)
         except FileNotFoundError:
             return None
-        self.ws = self.data_file.active
+        self.ws = self.data_file['IMM_template']
         # Discipline should be gotten from user at the start of the import
         # so when coding GUI it should be included
         self.discipline = 'inv'
-        connection = pyodbc.connect('DSN=IMMTest; Trusted_Connection=yes;')
-        self.cursor = connection.cursor()
+        self._connection = pyodbc.connect('DSN=ImportTest; Trusted_Connection=yes;')
+        self.cursor = self._connection.cursor()
 
     def _find_persons(self):
         # Return all unique persons in the spreadsheet for import
@@ -35,6 +35,11 @@ class import_tools():
                     names.extend(self._split_persons(row_data[column].value))
                 else:
                     continue
+        for i in range(len(names)):
+            if ',' in names[i]:
+                name = names[i].split(',')
+                name = [thing.strip() for thing in names]
+                names[i] = ' '.join(name)
         names = list(set(names))
 
         for name in names:
@@ -58,12 +63,74 @@ class import_tools():
             table_id = ['Person.person_id']
         elif method == 'Taxon':
             table_id = ['Taxonomy.taxon_id']
-        elif method == 'Sites':
-            relevant_cols = [i for i in range(30, 73) if i != 48]
-            return relevant_cols
         elif method == 'Events':
-            relevant_cols = [i for i in range(6, 30)]
-            return relevant_cols
+            table_id = ['CollectionEvent.bait',
+                        'CollectionEvent.collec_method',
+                        'CollectionEvent.collection_date',	
+                        'CollectionEvent.date_remarks',
+                        'CollectionEvent.discipline_cd',
+                        'CollectionEvent.event_num',
+                        'CollectionEvent.field_event',	
+                        'CollectionEvent.net_gear_trap',
+                        'CollectionEvent.note',	
+                        'CollectionEvent.permit_num', 
+                        'CollectionEvent.season',	
+                        'CollectionEvent.start_time',
+                        'CollectionEvent.stop_time', 
+                        'CollectionEvent.time_standard', 
+                        'CollectionEvent.sampling_duration',
+                        'CollectionEvent.vessel_name',	
+                        'CollectionEvent.air_temp', 
+                        'CollectionEvent.at_unit', 
+                        'CollectionEvent.cloud_cover',	
+                        'CollectionEvent.weather_remarks',	
+                        'CollectionEvent.wind_direction',
+                        'CollectionEvent.wind_speed',
+                        'CollectionEvent.ws_unit']
+        elif method == 'Sites':
+            table_id = ['GeographicSite.max_easl',
+                             'GeographicSite.min_easl',
+                             'GeographicSite.note_easl',
+                             'GeographicSite.unit_easl',
+                             'GeographicSite.biogeoclimatic',	
+                             'GeographicSite.biozone',
+                             'GeographicSite.continent',
+                             'GeographicSite.country',
+                             'GeographicSite.county',
+                             'GeographicSite.district',
+                             'GeographicSite.ecoprovince',
+                             'GeographicSite.fossile_ref_num',
+                             'GeographicSite.mine_name',
+                             'GeographicSite.natural_region',
+                             'GeographicSite.park',
+                             'GeographicSite.prov_state',
+                             'GeographicSite.township',
+                             'GeographicSite.water_body',
+                             'GeographicSite.collector_site_id',
+                             'GeographicSite.description',
+                             'GeographicSite.discipline_cd',
+                             'GeographicSite.location_name',
+                             'GeographicSite.reference',
+                             'GeographicSite.remarks',
+                             'GeoSiteNote.note_date',
+                             'GeoSiteNote.note',
+                             'GeoSiteNote.title',
+                             'GeographicSite.accuracy',
+                             'GeographicSite.latlong_approximate',
+                             'GeographicSite.latitude',
+                             'GeographicSite.latitude_stop',
+                             'GeographicSite.longitude',
+                             'GeographicSite.longitude_stop',
+                             'GeographicSite.na_datapoint',
+                             'GeographicSite.non_nts_map_ref',
+                             'GeographicSite.nts_ref',
+                             'GeographicSite.utm_datapoint',
+                             'GeographicSite.utm_east',
+                             'GeographicSite.utm_north',
+                             'GeographicSite.utm_zone',
+                             'GeographicSite.primary_river_drainage',
+                             'GeographicSite.secondary_river_drainage',	
+                             'GeographicSite.tertiary_river_drainage']
 
         for col in range(1, len(headder_row)):
             if headder_row[col].value in table_id and col not in relevant_cols:
@@ -73,7 +140,7 @@ class import_tools():
     def _split_persons(self, person_names):
         # Returns the split value of person names where a dilineator is present
         names = []
-        delineators = ",;:|/\\"
+        delineators = ";:|/\\"
         if any(char in person_names for char in delineators):
             person_names = person_names.replace(';', ',').replace(':', ',').replace('|', ',')
             names = [name.strip(' ') for name in person_names.split(',')]
@@ -130,13 +197,20 @@ class import_tools():
                 generated_sites[site_id] = {}
                 for index in relevant_cols:
                     generated_sites[site_id][key_row[index].value] = self.ws[row][index].value
+                generated_sites[site_id]["Collector's Site ID"] = site_id
+                self.ws.cell(row = row, column = 49, value = site_id)
             else:
                 site = {}
                 for index in relevant_cols:
                     site[key_row[index].value] = self.ws[row][index].value
                 if site not in generated_sites.values():
                     generated_sites[site_id] = site
-
+                    self.ws.cell(row = row, column = 49, value = site_id)
+                    generated_sites[site_id]["Collector's Site ID"] = site_id
+                else:
+                    site_id = [key for key, value in generated_sites if site == value]
+                    self.ws.cell(row = row, column = 49, value = site_id)
+                    generated_sites[site_id]["Collector's Site ID"] = site_id
         return generated_sites
 
     def _get_max_site_id(self):
@@ -171,9 +245,13 @@ class import_tools():
                 generated_events[event_id] = {key_row[col].value: working_row[col].value 
                                                     for col in relevant_cols if col not in [11, 22]}
                 generated_events[event_id]['Collector'] = self._split_persons(working_row[22].value)
+                self.ws.cell(row = row, column = 12, value = event_id)
+                generated_events[event_id]['Event Number'] = event_id
             else:
                 generated_events[event_id]['Collector'].extend(self._split_persons(working_row[22].value))
                 generated_events[event_id]['Collector'] = list(set(generated_events[event_id]['Collector']))
+                self.ws.cell(row = row, column = 12, value = event_id)
+                generated_events[event_id]['Event Number'] = event_id
                 
         return generated_events
 
@@ -202,7 +280,7 @@ class import_tools():
         if section == 'Event':
             worksheet.cell(row = row, column = col, value = 'Event Number') 
         else:
-            worksheet.cell(row = row, column = col, value =  'Geosite_id')
+            worksheet.cell(row = row, column = col, value =  "Collector's Site ID")
         first_record = data[list(data.keys())[1]]
         keys = [key for key in first_record.keys()]
         for key in data.keys():
@@ -229,11 +307,10 @@ class import_tools():
 
     def write_spreadsheet(self):
         # Writes the found and generated data to new tabs in the import spreadsheet
-        if self.data_file.sheetnames != ['IMM_template', 'Person', 'Taxon', 'Site', 'Event']:
-            self.data_file.create_sheet('Person')
-            self.data_file.create_sheet('Taxon')
-            self.data_file.create_sheet('Site')
-            self.data_file.create_sheet('Event')
+        missing = set(['IMM_template', 'Person', 'Taxon', 'Site', 'Event']) - set(self.data_file.sheetnames)
+        if len(missing) > 0:
+            for sheet in missing:
+                self.data_file.create_sheet(sheet)
 
         persons = self._find_persons()
         self._write_persontaxa(persons, 'Person')
@@ -279,17 +356,107 @@ class import_tools():
                 test_results[value] = False
         return test_results
     
+    def _check_sheets(self):
+        if set(self.data_file.sheetnames) == set(['IMM_template', 'Person', 'Taxon', 'Site', 'Event']):
+            return True
+        else:
+            return False
+
+    def _check_persontaxa(self):
+        for sheet in ['Person', 'Taxon']:
+            workingsheet = self.data_file[sheet]
+            if workingsheet.max_column > 2:
+                return 1, 'This {} sheet is incomplete'.format(sheet)
+            for row in range(2, workingsheet.max_row + 1):
+                if not str(workingsheet.cell(row, 2).value).isnumeric():
+                    return 1, 'This {} sheet is incomplete'.format(sheet)
+        return 0, 'Complete'
+
     def _add_ids(self):
-        print("TEST")
+        if not self._check_sheets:
+            return 1, 'This is the wrong spreadsheet'
+        if not self._check_persontaxa:
+            return 1, 'Persons/Taxa has not been completed'
+
+        
+        for sheet in ['Person', 'Taxon', 'Site', 'Event']:
+            data = {sheet: {}}
+            workingsheet = self.data_file[sheet]
+            if sheet in ['Person', 'Taxon']:
+                data[sheet] = {workingsheet.cell(i, 1).value: workingsheet.cell(i, 2).value for i in range (2, workingsheet.max_row + 1)}
+            else:
+                keys = [workingsheet.cell(row = 1, column=i).value for i in range(1, workingsheet.max_column + 1)] 
+                for row in range(2, workingsheet.max_row + 1):
+                    id = workingsheet.cell(row = row, column = 1).value
+                    data[sheet][id] = {keys[i - 1]: workingsheet.cell(row = row, column = i).value for i in range(1, workingsheet.max_column + 1)}
+            if sheet in ['Person', 'Taxon']:
+                self._handle_persontaxa(data)
+            if sheet in ['Site', 'Event']:
+                self._handle_siteevent(data)
+            
+        self.data_file.save('IMM_Template_with_ids.xlsx')
+        return 0, 'Done'
+
+
+    def _handle_persontaxa(self, data):
+        tab = list(data.keys())[0]
+        data = data[tab]
+        relevant_cols = self._find_relevant_column(tab)
+        i = 1
+        for col in relevant_cols:
+            col = col + i
+            self.ws.insert_cols(col)
+            self.ws.cell(row = 3, column = col, value = tab + '_id')
+
+            for row in range(4,self.ws.max_row + 1):
+                value = self.ws.cell(row = row, column = (col + 1)).value
+                if value is None:
+                    continue
+
+                if tab == 'Person':
+                    values = self._split_persons(value)
+                    value = '; '.join([str(data[thing]) for thing in values])
+                    self.ws.cell(row = row, column = col, value = value)
+                else:
+                    self.ws.cell(row = row, column = col, value = data[value])
+            i += 1
+        return 0
+
+    def _handle_siteevent(self, data):
+        tab = list(data.keys())[0]
+        data = data[tab]
+        tab = tab + 's'
+        relevant_cols = self._find_relevant_column(tab)
+        for col in relevant_cols:
+            key = self.ws.cell(row = 2, column = col + 1).value
+
+            for row in range(4, self.ws.max_row + 1):
+                value = self.ws.cell(row = row, column = col + 1).value
+                if tab == 'Sites':
+                    id = self.ws.cell(row = row, column = 50).value
+                else:
+                    id = self.ws.cell(row = row, column = 12).value
+                if value != data[id][key]:
+                    self.ws.cell(row = row, column = col + 1, value = data[id][key])
+        return 0
+
+    def _to_prod(self):
+        self._connection = pyodbc.connect('DSN=IMM Prod; Trusted_Connection=yes;')
+        return 0, "Database connection changed to Production"
+
+    def _to_test(self):
+        self._connection = pyodbc.connect('DSN=ImportTest; Trusted_Connection=yes;')
+        return 0, 'Database connection changed to Test'
+
+    def _import_siteevent(self):
+        return 0
+
+
+        
+
+
 
     def write_to_db():
         # Writes the data from the import spreadsheet to the database
         return 0
-
-if __name__ == '__main__':
-    impt = import_tools()
-    if impt is None:
-        print("You didn't choose a file")
-    else:
-        impt.write_spreadsheet()
 

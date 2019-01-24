@@ -12,16 +12,16 @@ class BulkImportTest(unittest.TestCase):
     def test_find_persons(self):
         value = self.impt._find_persons()
         test_values = {'Hugh MacIntosh': [6755], 'Evan Harley': [6168],
-                       'Meg Sugrue': ['NEW?'], 'David Stewart': ['NEW?'],
-                       'Henry Choong': [2767, 4659], 'Heidi Gartner': [2430, 4829, 5698]}
+                       'Meg Sugrue': [16213], 'David Stewart': ['NEW?'],
+                       'Henry Choong': [2767, 4659], 'Heidi Gartner': [2430, 4829]}
         self.assertEqual(test_values, value)
 
     def test_find_relevant_column(self):
         test_methods = ['Person', 'Taxon', 'Sites', 'Events']
         value = []
         test_values = [22, 75, 76, 117]
-        test_values2 = [i for i in range(6, 73) if i != 48]
-        test_values.extend(test_values2)
+        test_values.extend([i for i in range(6, 73)])
+        test_values = list(set(test_values))
         for method in test_methods:
             value.extend(self.impt._find_relevant_column(method))
         self.assertEqual(sorted(test_values), sorted(value))
@@ -32,7 +32,7 @@ class BulkImportTest(unittest.TestCase):
 
     def test_find_taxa(self):
         value = self.impt._find_taxa()
-        test_values = {'Cancer productus': [98672], 'Cancer magister': [98675]}
+        test_values = {'Cancer productus': [98672], 'Cancer magister': ['NEW?']} # Cancer magister: 98675
         self.assertEqual(test_values, value)
 
     def test_query_taxa(self):
@@ -46,8 +46,9 @@ class BulkImportTest(unittest.TestCase):
    
     def test_generate_site(self):
         value = self.impt._generate_sites()
-        test_values = {'VS101450':
-                        {'Elevation (max)': 15,
+        test_values = {'VS101579':
+                        { "Collector's Site ID": 'VS101579',
+                        'Elevation (max)': 15,
                         'Elevation (min)': 14,
                         'Elevation note': None,
                         'Elevation unit': 'm',
@@ -89,8 +90,8 @@ class BulkImportTest(unittest.TestCase):
                         'Primary drainage':	None,
                         'Secondary drainage': None,
                         'Tertiary drainage': None,
-                        }, 'VS101451':
-                        {
+                        }, 'VS101580':
+                        {"Collector's Site ID": 'VS101580',
                         'Elevation (max)': 5,
                         'Elevation (min)': 4,
                         'Elevation note': None,
@@ -136,19 +137,41 @@ class BulkImportTest(unittest.TestCase):
                         }}
 
         self.assertEqual(test_values, value)
+    
+    def test_generate_sites_write_site_id(self):
+        test_values = ['VS101579', 'VS101580']
+        self.impt._generate_sites()
+        values = [self.impt.ws.cell(row = i, column = 49).value for i in range(4, self.impt.ws.max_row + 1)]
+        self.assertEqual(test_values, values)
 
     def test_get_max_site_id(self):
         value = self.impt._get_max_site_id()
-        test_value = ['VS', '101449']
+        test_value = ['VS', '101578']
         self.assertEqual(test_value, value)
 
     def test_get_max_event_id(self):
         value = self.impt._get_max_event_id()
-        test_value = ['VE', '17430']
+        test_value = ['VE', '17566']
         self.assertEqual(test_value, value)
 
-    def test_add_ids(self):
-        self.fail("Not Implemented")
+    def test_add_ids_writes_correctly(self):
+        test_values = []
+        values = []
+        self.impt._add_ids()
+        file = openpyxl.load_workbook('IMM_Template_with_ids.xlsx')
+        correct_file = openpyxl.load_workbook('IMM import template_with_ids_correct.xlsx')
+        results = file['IMM_template']
+        actual_results = correct_file['IMM_template']
+        keys = [actual_results.cell(row=3, column = i).value for i in range(1, actual_results.max_column + 1)]
+        for row in range(4, actual_results.max_row + 1):
+            value_dict = {keys[i - 1]: actual_results.cell(row = row, column = i).value 
+                          for i in range(1, actual_results.max_column + 1)}
+            test_values.append(value_dict)
+        for row in range(4, results.max_row + 1):
+            value_dict = {keys[i - 1]: results.cell(row = row, column = i).value 
+                          for i in range(1, actual_results.max_column + 1)}
+            values.append(value_dict)
+        self.assertEqual(test_values, values)
 
     def test_import_collection_events(self):
         self.fail("Not Implemented")
@@ -166,16 +189,17 @@ class BulkImportTest(unittest.TestCase):
         self.fail("Not Implemented")
 
     def test_write_to_prod(self):
-        self.fail("Not Implemented")
+        self.fail('not Implemented')
 
     def test_generate_event(self):
         value = self.impt._generate_events()
-        test_values = {'VE17431':
+        test_values = {'VE17567':
                         {'Bait': None,
                         'Collection method': 'Hand',
                         'Date': datetime(2018, 12, 31, 0, 0),
                         'Date remarks': None,
                         'Discipline': 'INV',
+                        'Event Number': 'VE17567',
                         'Field Event Code': 'EV1',
                         'Net/Gear/Trap type': 'trap',
                         'Note': None,
@@ -195,12 +219,13 @@ class BulkImportTest(unittest.TestCase):
                         'Wind speed': None,
                         'Wind speed unit': None,
                         },
-                        'VE17432':
+                        'VE17568':
                         {'Bait': None,
                         'Collection method': 'Hand',
                         'Date': datetime(2018, 12, 31, 0, 0),
                         'Date remarks': None,
                         'Discipline': 'INV',
+                        'Event Number': 'VE17568',
                         'Field Event Code': 'EV2',
                         'Net/Gear/Trap type': 'trap',
                         'Note': None,
@@ -225,7 +250,7 @@ class BulkImportTest(unittest.TestCase):
 
     def test_write_spreadsheet(self):
         test_values = {
-            'sheet_names':['IMM_template', 'Person', 'Taxon', 'Site', 'Event'],
+            'sheet_names':set(['IMM_template', 'Person', 'Taxon', 'Site', 'Event']),
             'row_count':{'IMM_template': 5, 
                        'Person': 7, 
                        'Taxon':3, 
@@ -236,7 +261,7 @@ class BulkImportTest(unittest.TestCase):
         self.impt.write_spreadsheet()
         file = openpyxl.load_workbook(self.impt.data_filename)
 
-        values['sheet_names'] = file.sheetnames
+        values['sheet_names'] = set(file.sheetnames)
         values['row_count'] = {}
         for sheet in file.sheetnames:
             worksheet = file[sheet]
@@ -249,6 +274,16 @@ class BulkImportTest(unittest.TestCase):
         key_row = self.impt.ws[3]
         test_values = {key_row[i].value: True for i in range(len(key_row))}
         self.assertEqual(test_values, values)
+
+    def test_check_sheets(self):
+        self.assertTrue(self.impt._check_sheets())
+
+    def test_check_persontaxa(self):
+        test_values = [0, 'Complete']
+        status, message = self.impt._check_persontaxa()
+        self.assertEqual(test_values, [status, message])
+
+
 
 
 
