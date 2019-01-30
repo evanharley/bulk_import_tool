@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime
 from bulk_import_tool import import_tools
 import openpyxl
+import pyodbc
 
 class BulkImportTest(unittest.TestCase):
     
@@ -186,10 +187,17 @@ class BulkImportTest(unittest.TestCase):
         self.fail("Not Implemented")
 
     def test_write_to_test(self):
-        self.fail("Not Implemented")
+        self.impt._to_test()
+        value = self.impt._connection.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
+        test_value = 'ImportTest'
+        self.assertEqual(test_value, value)
 
     def test_write_to_prod(self):
-        self.fail('not Implemented')
+        self.impt._to_prod()
+        value = self.impt._connection.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
+        test_value = 'IMM Prod'
+        self.assertEqual(test_value, value)
+        
 
     def test_generate_event(self):
         value = self.impt._generate_events()

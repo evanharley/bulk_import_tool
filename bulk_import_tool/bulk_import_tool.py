@@ -7,10 +7,10 @@ class import_tools():
 
     def __init__(self, *args, **kwargs):
         
-        # self.data_filename = filedialog.askopenfilename(title='Open', defaultextension='.xlsx', 
-        #                                       filetypes=[('Excel Files', '*.xlsx')])
-        self.data_filename = "C:\\Users\\evharley\\source\\repos\\bulk_import_tool\\bulk_import_tool\\" +\
-            "IMM import template - test.xlsx"
+        self.data_filename = filedialog.askopenfilename(title='Open', defaultextension='.xlsx', 
+                                              filetypes=[('Excel Files', '*.xlsx')])
+        #self.data_filename = "C:\\Users\\evharley\\source\\repos\\bulk_import_tool\\bulk_import_tool\\" +\
+        #    "IMM import template - test.xlsx"
         try:
             self.data_file = openpyxl.load_workbook(self.data_filename)
         except FileNotFoundError:
@@ -32,7 +32,11 @@ class import_tools():
             row_data = self.ws[row]
             for column in person_cols:
                 if row_data[column].value is not None:
-                    names.extend(self._split_persons(row_data[column].value))
+                    name = self._split_persons(row_data[column].value)
+                    if isinstance(name, list):
+                        names.extend(name)
+                    else:
+                        names.append(name)
                 else:
                     continue
         for i in range(len(names)):
@@ -198,19 +202,27 @@ class import_tools():
                 for index in relevant_cols:
                     generated_sites[site_id][key_row[index].value] = self.ws[row][index].value
                 generated_sites[site_id]["Collector's Site ID"] = site_id
-                self.ws.cell(row = row, column = 49, value = site_id)
+                self.ws.cell(row = row, column = 51, value = site_id)
             else:
                 site = {}
+                difference = 0
                 for index in relevant_cols:
                     site[key_row[index].value] = self.ws[row][index].value
-                if site not in generated_sites.values():
+                for item in generated_sites.keys():
+                    diff = {key: site[key] for key in generated_sites[item] 
+                            if key != "Collector's Site ID" and site[key] != generated_sites[item][key]}
+                    if len(diff.keys()) > 0:
+                        difference += 1
+                    else:
+                        difference = 0
+                        matching_id = item
+                        break
+                if difference > 0:
                     generated_sites[site_id] = site
-                    self.ws.cell(row = row, column = 49, value = site_id)
+                    self.ws.cell(row = row, column = 51, value = site_id)
                     generated_sites[site_id]["Collector's Site ID"] = site_id
                 else:
-                    site_id = [key for key, value in generated_sites if site == value]
-                    self.ws.cell(row = row, column = 49, value = site_id)
-                    generated_sites[site_id]["Collector's Site ID"] = site_id
+                    self.ws.cell(row = row, column = 51, value = matching_id)
         return generated_sites
 
     def _get_max_site_id(self):
@@ -241,17 +253,32 @@ class import_tools():
             new_event_id[1] = str(int(new_event_id[1]) + 1)
             event_id = new_event_id[0] + new_event_id[1]
             working_row = self.ws[row]
-            if event_id not in generated_events.keys():
-                generated_events[event_id] = {key_row[col].value: working_row[col].value 
-                                                    for col in relevant_cols if col not in [11, 22]}
-                generated_events[event_id]['Collector'] = self._split_persons(working_row[22].value)
-                self.ws.cell(row = row, column = 12, value = event_id)
-                generated_events[event_id]['Event Number'] = event_id
+            if generated_events == {}:
+                generated_events[event_id] = {}
+                for index in relevant_cols:
+                    generated_events[event_id][key_row[index].value] = working_row[index].value
+                generated_events[event_id]["Event Number"] = event_id
+                self.ws.cell(row = row, column = 14, value = event_id)
             else:
-                generated_events[event_id]['Collector'].extend(self._split_persons(working_row[22].value))
-                generated_events[event_id]['Collector'] = list(set(generated_events[event_id]['Collector']))
-                self.ws.cell(row = row, column = 12, value = event_id)
-                generated_events[event_id]['Event Number'] = event_id
+                event = {}
+                difference = 0
+                for index in relevant_cols:
+                    event[key_row[index].value] = working_row[index].value
+                for item in generated_events.keys():
+                    diff = {key: event[key] for key in generated_events[item] 
+                            if key != "Event Number" and event[key] != generated_events[item][key]}
+                    if len(diff.keys()) > 0:
+                        difference += 1
+                    else:
+                        difference = 0
+                        matching_id = item
+                        break
+                if difference > 0:
+                    generated_events[event_id] = event
+                    self.ws.cell(row = row, column = 14, value = event_id)
+                    generated_events[event_id]["Event Number"] = event_id
+                else:
+                    self.ws.cell(row = row, column = 14, value = matching_id)
                 
         return generated_events
 
@@ -314,17 +341,21 @@ class import_tools():
 
         persons = self._find_persons()
         self._write_persontaxa(persons, 'Person')
+        print("Persons Complete")
 
         taxa = self._find_taxa()
         self._write_persontaxa(taxa, 'Taxon')
+        print("Taxa Complete")
 
         sites = self._generate_sites()
         self._write_siteevent(sites, "Site")
+        print("Sites Complete")
 
         events = self._generate_events()
         self._write_siteevent(events, 'Event')
+        print("Events Complete")
 
-        self.data_file.save(self.data_filename)
+        self.data_file.save(self.data_filename[:-5] + '_test.xlsx')
         return 0 
 
 
@@ -394,7 +425,7 @@ class import_tools():
             if sheet in ['Site', 'Event']:
                 self._handle_siteevent(data)
             
-        self.data_file.save('IMM_Template_with_ids.xlsx')
+        self.data_file.save(self.data_filename)
         return 0, 'Done'
 
 
@@ -415,7 +446,10 @@ class import_tools():
 
                 if tab == 'Person':
                     values = self._split_persons(value)
-                    value = '; '.join([str(data[thing]) for thing in values])
+                    if isinstance(values, list):
+                        value = '; '.join([str(data[thing]) for thing in values])
+                    else:
+                        value = str(data[value])
                     self.ws.cell(row = row, column = col, value = value)
                 else:
                     self.ws.cell(row = row, column = col, value = data[value])
@@ -433,9 +467,9 @@ class import_tools():
             for row in range(4, self.ws.max_row + 1):
                 value = self.ws.cell(row = row, column = col + 1).value
                 if tab == 'Sites':
-                    id = self.ws.cell(row = row, column = 50).value
+                    id = self.ws.cell(row = row, column = 52).value
                 else:
-                    id = self.ws.cell(row = row, column = 12).value
+                    id = self.ws.cell(row = row, column = 14).value
                 if value != data[id][key]:
                     self.ws.cell(row = row, column = col + 1, value = data[id][key])
         return 0
@@ -448,13 +482,17 @@ class import_tools():
         self._connection = pyodbc.connect('DSN=ImportTest; Trusted_Connection=yes;')
         return 0, 'Database connection changed to Test'
 
-    def _import_siteevent(self):
+    def _import_site(self):
         return 0
 
+    def _import_event(self):
+        return 0
 
-        
+    def _import_persons(self):
+        return 0
 
-
+    def _import_specimen(self):
+        return 0
 
     def write_to_db():
         # Writes the data from the import spreadsheet to the database
