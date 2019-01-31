@@ -1,13 +1,14 @@
 import unittest
 from datetime import datetime
-from bulk_import_tool import import_tools
+from bulk_import_tool import ImportTools
 import openpyxl
 import pyodbc
+
 
 class BulkImportTest(unittest.TestCase):
     
     def setUp(self):
-        self.impt = import_tools()
+        self.impt = ImportTools()
         self.maxDiff = None
     
     def test_find_persons(self):
@@ -33,14 +34,14 @@ class BulkImportTest(unittest.TestCase):
 
     def test_find_taxa(self):
         value = self.impt._find_taxa()
-        test_values = {'Cancer productus': [98672], 'Cancer magister': ['NEW?']} # Cancer magister: 98675
+        test_values = {'Cancer productus': [98672], 'Cancer magister': ['NEW?']}  # Cancer magister: 98675
         self.assertEqual(test_values, value)
 
     def test_query_taxa(self):
         test_taxa = ['Tryphon', 'Heterocladium macounii Best', 'Trivias', 'Homoglaea hircina', 'Acanthodiaptomus']
         value = []
         test_values = [70215058, 90223816, 'NEW?', 70212504, 70219886, 70219887, 70219888,
-                        70219889, 70219890, 70219898, 85836, 80047655]
+                       70219889, 70219890, 70219898, 85836, 80047655]
         for taxon in test_taxa:
             value.extend(self.impt._query_taxa(taxon))
         self.assertEqual(test_values, value)
@@ -48,13 +49,13 @@ class BulkImportTest(unittest.TestCase):
     def test_generate_site(self):
         value = self.impt._generate_sites()
         test_values = {'VS101579':
-                        { "Collector's Site ID": 'VS101579',
+                       {"Collector's Site ID": 'VS101579',
                         'Elevation (max)': 15,
                         'Elevation (min)': 14,
                         'Elevation note': None,
                         'Elevation unit': 'm',
                         'Biogeoclimatic': None,
-                        'Biozone':None,
+                        'Biozone': None,
                         'Continent': 'North America',
                         'Country': 'Canada',
                         'County': None,
@@ -70,7 +71,7 @@ class BulkImportTest(unittest.TestCase):
                         'Description':	'Fannin tower, 2nd floor',
                         'Discipline': None,
                         'Location Name': 'Victoria: RBCM Collections building',
-                        'Reference': None, 
+                        'Reference': None,
                         'Remarks': None,
                         'Notes (Date)': None,
                         'Notes (Note)': None,
@@ -78,7 +79,7 @@ class BulkImportTest(unittest.TestCase):
                         'Accuracy': None,
                         'Approximate': None,
                         'Latitude': 48.419603,
-                        'Latitude Stop': None,	
+                        'Latitude Stop': None,
                         'Longitude': -123.3706457,
                         'Longitude Stop': None,
                         'N.A. Datapoint': None,
@@ -92,7 +93,7 @@ class BulkImportTest(unittest.TestCase):
                         'Secondary drainage': None,
                         'Tertiary drainage': None,
                         }, 'VS101580':
-                        {"Collector's Site ID": 'VS101580',
+                       {"Collector's Site ID": 'VS101580',
                         'Elevation (max)': 5,
                         'Elevation (min)': 4,
                         'Elevation note': None,
@@ -114,7 +115,7 @@ class BulkImportTest(unittest.TestCase):
                         'Description':	'Clifford Carl Hall',
                         'Discipline': None,
                         'Location Name': 'Victoria: RBCM Exhibits building',
-                        'Reference': None, 
+                        'Reference': None,
                         'Remarks': None,
                         'Notes (Date)': None,
                         'Notes (Note)': None,
@@ -122,7 +123,7 @@ class BulkImportTest(unittest.TestCase):
                         'Accuracy': None,
                         'Approximate': None,
                         'Latitude': 48.419957,
-                        'Latitude Stop': None,	
+                        'Latitude Stop': None,
                         'Longitude': -123.3688604,
                         'Longitude Stop': None,
                         'N.A. Datapoint': None,
@@ -142,7 +143,7 @@ class BulkImportTest(unittest.TestCase):
     def test_generate_sites_write_site_id(self):
         test_values = ['VS101579', 'VS101580']
         self.impt._generate_sites()
-        values = [self.impt.ws.cell(row = i, column = 49).value for i in range(4, self.impt.ws.max_row + 1)]
+        values = [self.impt.ws.cell(row=i, column=49).value for i in range(4, self.impt.ws.max_row + 1)]
         self.assertEqual(test_values, values)
 
     def test_get_max_site_id(self):
@@ -163,13 +164,13 @@ class BulkImportTest(unittest.TestCase):
         correct_file = openpyxl.load_workbook('IMM import template_with_ids_correct.xlsx')
         results = file['IMM_template']
         actual_results = correct_file['IMM_template']
-        keys = [actual_results.cell(row=3, column = i).value for i in range(1, actual_results.max_column + 1)]
+        keys = [actual_results.cell(row=3, column=i).value for i in range(1, actual_results.max_column + 1)]
         for row in range(4, actual_results.max_row + 1):
-            value_dict = {keys[i - 1]: actual_results.cell(row = row, column = i).value 
+            value_dict = {keys[i - 1]: actual_results.cell(row=row, column=i).value
                           for i in range(1, actual_results.max_column + 1)}
             test_values.append(value_dict)
         for row in range(4, results.max_row + 1):
-            value_dict = {keys[i - 1]: results.cell(row = row, column = i).value 
+            value_dict = {keys[i - 1]: results.cell(row=row, column=i).value
                           for i in range(1, actual_results.max_column + 1)}
             values.append(value_dict)
         self.assertEqual(test_values, values)
@@ -197,12 +198,11 @@ class BulkImportTest(unittest.TestCase):
         value = self.impt._connection.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
         test_value = 'IMM Prod'
         self.assertEqual(test_value, value)
-        
 
     def test_generate_event(self):
         value = self.impt._generate_events()
         test_values = {'VE17567':
-                        {'Bait': None,
+                       {'Bait': None,
                         'Collection method': 'Hand',
                         'Date': datetime(2018, 12, 31, 0, 0),
                         'Date remarks': None,
@@ -227,8 +227,8 @@ class BulkImportTest(unittest.TestCase):
                         'Wind speed': None,
                         'Wind speed unit': None,
                         },
-                        'VE17568':
-                        {'Bait': None,
+                       'VE17568':
+                       {'Bait': None,
                         'Collection method': 'Hand',
                         'Date': datetime(2018, 12, 31, 0, 0),
                         'Date remarks': None,
@@ -252,18 +252,17 @@ class BulkImportTest(unittest.TestCase):
                         'Wind direction': None,
                         'Wind speed': None,
                         'Wind speed unit': None,
-                        }
-                        }
+                        }}
         self.assertEqual(test_values, value)
 
     def test_write_spreadsheet(self):
         test_values = {
-            'sheet_names':set(['IMM_template', 'Person', 'Taxon', 'Site', 'Event']),
-            'row_count':{'IMM_template': 5, 
-                       'Person': 7, 
-                       'Taxon':3, 
-                       'Site': 3, 
-                       'Event': 3}
+            'sheet_names': ('IMM_template', 'Person', 'Taxon', 'Site', 'Event'),
+            'row_count': {'IMM_template': 5,
+                          'Person': 7,
+                          'Taxon': 3,
+                          'Site': 3,
+                          'Event': 3}
             }
         values = {}
         self.impt.write_spreadsheet()
@@ -290,12 +289,6 @@ class BulkImportTest(unittest.TestCase):
         test_values = [0, 'Complete']
         status, message = self.impt._check_persontaxa()
         self.assertEqual(test_values, [status, message])
-
-
-
-
-
-
 
 
 if __name__ == '__main__':

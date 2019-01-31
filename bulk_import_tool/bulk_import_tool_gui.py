@@ -5,7 +5,7 @@
 #
 
 import wx
-from bulk_import_tool import import_tools
+from bulk_import_tool import ImportTools
 
 
 # begin wxGlade: dependencies
@@ -39,7 +39,8 @@ class DBChooserDialog(wx.Dialog):
         # begin wxGlade: DBChooserDialog.__do_layout
         sizer_1 = wx.BoxSizer(wx.VERTICAL)
         sizer_2 = wx.BoxSizer(wx.HORIZONTAL)
-        label_1 = wx.StaticText(self, wx.ID_ANY, "Please select the database to which you wish to write", style=wx.ALIGN_CENTER)
+        label_1 = wx.StaticText(self, wx.ID_ANY, "Please select the database to which you wish to write",
+                                style=wx.ALIGN_CENTER)
         label_1.SetMinSize((260, 25))
         sizer_1.Add(label_1, 0, wx.ALIGN_CENTER | wx.ALL, 2)
         sizer_2.Add(self.button_2, 0, wx.ALIGN_CENTER | wx.ALL, 2)
@@ -50,13 +51,15 @@ class DBChooserDialog(wx.Dialog):
         # end wxGlade
 
 
-class tools_window(wx.Frame):
+class ToolsWindow(wx.Frame):
     def __init__(self, *args, **kwds):
         # begin wxGlade: tools_window.__init__
         kwds["style"] = kwds.get("style", 0) | wx.DEFAULT_FRAME_STYLE
         wx.Frame.__init__(self, *args, **kwds)
         self.SetSize((400, 200))
-        self.choice_1 = wx.Choice(self, wx.ID_ANY, choices=["Botany", "Entomology", "Geology", "Herpetology", "Ichthyology", "Invertebrate Zoology", "Mammalogy", "Ornithology"])
+        self.choice_1 = wx.Choice(self, wx.ID_ANY, choices=["Botany", "Entomology", "Geology", "Herpetology",
+                                                            "Ichthyology", "Invertebrate Zoology",
+                                                            "Mammalogy", "Ornithology"])
         self.button_3 = wx.Button(self, wx.ID_ANY, "Set Discipline")
         self.button_6 = wx.Button(self, wx.ID_ANY, "Write Spreadsheet")
         self.button_7 = wx.Button(self, wx.ID_ANY, "Add IDs")
@@ -64,10 +67,10 @@ class tools_window(wx.Frame):
 
         self.__set_properties()
         self.__do_layout()
-        file_dialog = wx.FileDialog(self, "Open Template", wildcard = '.xlsx Files (*.xlsx)|*.xlsx',
-                                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        file_dialog = wx.FileDialog(self, "Open Template", wildcard='.xlsx Files (*.xlsx)|*.xlsx',
+                                    style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
         file_dialog.ShowModal()
-        self.impt = import_tools()
+        self.impt = ImportTools()
         self.impt._get_file(file_dialog.GetPath())
         file_dialog.Destroy()
         self.Bind(wx.EVT_BUTTON, self.set_discipline, self.button_3)
@@ -91,7 +94,8 @@ class tools_window(wx.Frame):
         sizer_8 = wx.BoxSizer(wx.VERTICAL)
         sizer_7 = wx.BoxSizer(wx.VERTICAL)
         sizer_5 = wx.BoxSizer(wx.VERTICAL)
-        label_1 = wx.StaticText(self, wx.ID_ANY, "Select the process step, and input the Discipline Type", style=wx.ALIGN_CENTER)
+        label_1 = wx.StaticText(self, wx.ID_ANY, "Select the process step, and input the Discipline Type",
+                                style=wx.ALIGN_CENTER)
         label_1.SetMinSize((257, 30))
         sizer_3.Add(label_1, 0, wx.ALIGN_CENTER | wx.ALL, 0)
         sizer_5.Add(self.choice_1, 0, wx.ALIGN_CENTER, 0)
@@ -133,12 +137,13 @@ class tools_window(wx.Frame):
 
 class BulkImportToolGUI(wx.App):
     def OnInit(self):
-        self.main_window = tools_window(None, wx.ID_ANY, "")
+        self.main_window = ToolsWindow(None, wx.ID_ANY, "")
         self.SetTopWindow(self.main_window)
         self.main_window.Show()
         return True
 
 # end of class BulkImportToolGUI
+
 
 if __name__ == "__main__":
     app = BulkImportToolGUI(0)
