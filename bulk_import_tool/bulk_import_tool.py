@@ -1,26 +1,24 @@
 import pyodbc
 import openpyxl
-from tkinter import filedialog
 
 # Tools for the Bulk Import of Natural History Specimens
 class import_tools():
 
     def __init__(self, *args, **kwargs):
         
-        self.data_filename = filedialog.askopenfilename(title='Open', defaultextension='.xlsx', 
-                                              filetypes=[('Excel Files', '*.xlsx')])
-        #self.data_filename = "C:\\Users\\evharley\\source\\repos\\bulk_import_tool\\bulk_import_tool\\" +\
-        #    "IMM import template - test.xlsx"
+        # Discipline should be gotten from user at the start of the import
+        # so when coding GUI it should be included
+        self.discipline = '' 
+        self._connection = pyodbc.connect('DSN=ImportTest; Trusted_Connection=yes;')
+        self.cursor = self._connection.cursor()
+    
+    def _get_file(self, filename):
+       
         try:
-            self.data_file = openpyxl.load_workbook(self.data_filename)
+            self.data_file = openpyxl.load_workbook(filename)
         except FileNotFoundError:
             return None
         self.ws = self.data_file['IMM_template']
-        # Discipline should be gotten from user at the start of the import
-        # so when coding GUI it should be included
-        self.discipline = 'inv'
-        self._connection = pyodbc.connect('DSN=ImportTest; Trusted_Connection=yes;')
-        self.cursor = self._connection.cursor()
 
     def _find_persons(self):
         # Return all unique persons in the spreadsheet for import
