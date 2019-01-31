@@ -16,9 +16,10 @@ class ImportTools:
         self.cursor = self._connection.cursor()
         self.data_file = None
         self.ws = None
+        
     
     def _get_file(self, filename):
-       
+        self.data_filename = filename
         try:
             self.data_file = openpyxl.load_workbook(filename)
         except FileNotFoundError:

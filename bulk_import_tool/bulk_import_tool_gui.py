@@ -14,43 +14,6 @@ from bulk_import_tool import ImportTools
 # begin wxGlade: extracode
 # end wxGlade
 
-class DBChooserDialog(wx.Dialog):
-    def __init__(self, *args, **kwds):
-        # begin wxGlade: DBChooserDialog.__init__
-        kwds["style"] = kwds.get("style", 0) | wx.DEFAULT_FRAME_STYLE
-        wx.Dialog.__init__(self, *args, **kwds)
-        self.SetSize((275, 100))
-        self.button_2 = wx.Button(self, wx.ID_ANY, "Test DB")
-        self.button_3 = wx.Button(self, wx.ID_ANY, "Production DB")
-
-        self.__set_properties()
-        self.__do_layout()
-        
-        # end wxGlade
-
-    def __set_properties(self):
-        # begin wxGlade: DBChooserDialog.__set_properties
-        self.SetTitle("Choose Database")
-        self.button_2.SetMinSize((130, 23))
-        self.button_3.SetMinSize((130, 23))
-        # end wxGlade
-
-    def __do_layout(self):
-        # begin wxGlade: DBChooserDialog.__do_layout
-        sizer_1 = wx.BoxSizer(wx.VERTICAL)
-        sizer_2 = wx.BoxSizer(wx.HORIZONTAL)
-        label_1 = wx.StaticText(self, wx.ID_ANY, "Please select the database to which you wish to write",
-                                style=wx.ALIGN_CENTER)
-        label_1.SetMinSize((260, 25))
-        sizer_1.Add(label_1, 0, wx.ALIGN_CENTER | wx.ALL, 2)
-        sizer_2.Add(self.button_2, 0, wx.ALIGN_CENTER | wx.ALL, 2)
-        sizer_2.Add(self.button_3, 0, wx.ALIGN_CENTER | wx.ALL, 0)
-        sizer_1.Add(sizer_2, 1, wx.EXPAND, 0)
-        self.SetSizer(sizer_1)
-        self.Layout()
-        # end wxGlade
-
-
 class ToolsWindow(wx.Frame):
     def __init__(self, *args, **kwds):
         # begin wxGlade: tools_window.__init__
@@ -74,14 +37,14 @@ class ToolsWindow(wx.Frame):
         self.impt._get_file(file_dialog.GetPath())
         file_dialog.Destroy()
         self.Bind(wx.EVT_BUTTON, self.set_discipline, self.button_3)
-        self.Bind(wx.EVT_BUTTON, self.impt._write_spreadsheet, self.button_6)
-        self.Bind(wx.EVT_BUTTON, self.impt._add_ids, self.button_7)
+        self.Bind(wx.EVT_BUTTON, self.write_spreadsheet, self.button_6)
+        self.Bind(wx.EVT_BUTTON, self.add_ids, self.button_7)
         self.Bind(wx.EVT_BUTTON, self.write_to_database, self.button_8)
         # end wxGlade
 
     def __set_properties(self):
         # begin wxGlade: tools_window.__set_properties
-        self.SetTitle("frame")
+        self.SetTitle("Import Tools")
         self.choice_1.SetMinSize((66, 25))
         self.button_3.SetMinSize((81, 23))
         # end wxGlade
@@ -128,9 +91,33 @@ class ToolsWindow(wx.Frame):
         self.impt.discipline = self.choice_1.StringSelection[:3].lower()
         event.Skip()
 
+    def write_spreadsheet(self, event):
+        write = self.impt.write_spreadsheet()
+        if write == 0:
+            dialog = wx.MessageBox('Writing Spread sheet is complete', 'Info', 
+                          wx.OK | wx.ICON_INFORMATION)
+        event.Skip()
+
+    def add_ids(self, event):
+        self.impt._add_ids()
+        if write == 0:
+            dialog = wx.MessageBox('Adding IDs is complete', 'Info',
+                         wx.OK | wx.ICON_INFORMATION)
+        event.Skip()
+
     def write_to_database(self, event):
-        dbchooserdialog = DBChooserDialog()
-        dbchooserdialog.ShowModal()
+        opt = ['Production', 'Test']
+        dialog = wx.SingleChoiceDialog(self, 'Choose which datbase to write to',
+                                      'Database Chooser', opt, wx.CHOICEDLG_STYLE)
+        if dialog.ShowModal() == wx.ID_OK:
+            value = dialog.GetStringSelection()
+        dialog.Destroy()
+        if value == 'Production':
+            self.impt._to_prod()
+        else:
+            self.impt._to_test()
+        self.impt.write_to_db()
+        event.Skip()
 
 
 # end of class tools_window
