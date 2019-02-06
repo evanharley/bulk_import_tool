@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime
-from bulk_import_tool import ImportTools
+from bulk_import_tool_gui import BulkImportToolGUI
 import openpyxl
 import pyodbc
 
@@ -8,11 +8,11 @@ import pyodbc
 class BulkImportTest(unittest.TestCase):
     
     def setUp(self):
-        self.impt = ImportTools()
+        self.app = BulkImportToolGUI(0)
         self.maxDiff = None
     
     def test_find_persons(self):
-        value = self.impt._find_persons()
+        value = self.app.TopWindow.impt._find_persons()
         test_values = {'Hugh MacIntosh': [6755], 'Evan Harley': [6168],
                        'Meg Sugrue': [16213], 'David Stewart': ['NEW?'],
                        'Henry Choong': [2767, 4659], 'Heidi Gartner': [2430, 4829]}
@@ -25,15 +25,15 @@ class BulkImportTest(unittest.TestCase):
         test_values.extend([i for i in range(6, 73)])
         test_values = list(set(test_values))
         for method in test_methods:
-            value.extend(self.impt._find_relevant_column(method))
+            value.extend(self.app.TopWindow.impt._find_relevant_column(method))
         self.assertEqual(sorted(test_values), sorted(value))
 
     def test_split_persons(self):
-        value = self.impt._split_persons('Evan Harley, Hugh MacIntosh; Meg Sugrue| Dave Stewart: test')
+        value = self.app.TopWindow.impt._split_persons('Evan Harley, Hugh MacIntosh; Meg Sugrue| Dave Stewart: test')
         self.assertEqual(['Evan Harley', 'Hugh MacIntosh', 'Meg Sugrue', 'Dave Stewart', 'test'], value)
 
     def test_find_taxa(self):
-        value = self.impt._find_taxa()
+        value = self.app.TopWindow.impt._find_taxa()
         test_values = {'Cancer productus': [98672], 'Cancer magister': ['NEW?']}  # Cancer magister: 98675
         self.assertEqual(test_values, value)
 
@@ -43,11 +43,11 @@ class BulkImportTest(unittest.TestCase):
         test_values = [70215058, 90223816, 'NEW?', 70212504, 70219886, 70219887, 70219888,
                        70219889, 70219890, 70219898, 85836, 80047655]
         for taxon in test_taxa:
-            value.extend(self.impt._query_taxa(taxon))
+            value.extend(self.app.TopWindow.impt._query_taxa(taxon))
         self.assertEqual(test_values, value)
    
     def test_generate_site(self):
-        value = self.impt._generate_sites()
+        value = self.app.TopWindow.impt._generate_sites()
         test_values = {'VS101579':
                        {"Collector's Site ID": 'VS101579',
                         'Elevation (max)': 15,
@@ -142,24 +142,24 @@ class BulkImportTest(unittest.TestCase):
     
     def test_generate_sites_write_site_id(self):
         test_values = ['VS101579', 'VS101580']
-        self.impt._generate_sites()
-        values = [self.impt.ws.cell(row=i, column=49).value for i in range(4, self.impt.ws.max_row + 1)]
+        self.app.TopWindow.impt._generate_sites()
+        values = [self.app.TopWindow.impt.ws.cell(row=i, column=49).value for i in range(4, self.app.TopWindow.impt.ws.max_row + 1)]
         self.assertEqual(test_values, values)
 
     def test_get_max_site_id(self):
-        value = self.impt._get_max_site_id()
+        value = self.app.TopWindow.impt._get_max_site_id()
         test_value = ['VS', '101578']
         self.assertEqual(test_value, value)
 
     def test_get_max_event_id(self):
-        value = self.impt._get_max_event_id()
+        value = self.app.TopWindow.impt._get_max_event_id()
         test_value = ['VE', '17566']
         self.assertEqual(test_value, value)
 
     def test_add_ids_writes_correctly(self):
         test_values = []
         values = []
-        self.impt._add_ids()
+        self.app.TopWindow.impt._add_ids()
         file = openpyxl.load_workbook('IMM_Template_with_ids.xlsx')
         correct_file = openpyxl.load_workbook('IMM import template_with_ids_correct.xlsx')
         results = file['IMM_template']
@@ -179,7 +179,12 @@ class BulkImportTest(unittest.TestCase):
         self.fail("Not Implemented")
 
     def test_import_geographic_sites(self):
-        self.fail("Not Implemented")
+        self.app.TopWindow.impt._import_site()
+        query = 'Select * from GeographicSite' +\
+                'where geo_site_id = (select max(geo_site_id) from GeographicSite'
+        values = self.app.TopWindow.impt.cursor(query).fetchone()
+        test_values = []
+        self.assertEqual(test_values, values)
 
     def test_import_taxonomy(self):
         self.fail("Not Implemented")
@@ -188,19 +193,19 @@ class BulkImportTest(unittest.TestCase):
         self.fail("Not Implemented")
 
     def test_write_to_test(self):
-        self.impt._to_test()
-        value = self.impt._connection.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
+        self.app.TopWindow.impt._to_test()
+        value = self.app.TopWindow.impt._connection.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
         test_value = 'ImportTest'
         self.assertEqual(test_value, value)
 
     def test_write_to_prod(self):
-        self.impt._to_prod()
-        value = self.impt._connection.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
+        self.app.TopWindow.impt._to_prod()
+        value = self.app.TopWindow.impt._connection.getinfo(pyodbc.SQL_DATA_SOURCE_NAME)
         test_value = 'IMM Prod'
         self.assertEqual(test_value, value)
 
     def test_generate_event(self):
-        value = self.impt._generate_events()
+        value = self.app.TopWindow.impt._generate_events()
         test_values = {'VE17567':
                        {'Bait': None,
                         'Collection method': 'Hand',
@@ -265,8 +270,8 @@ class BulkImportTest(unittest.TestCase):
                           'Event': 3}
             }
         values = {}
-        self.impt.write_spreadsheet()
-        file = openpyxl.load_workbook(self.impt.data_filename)
+        self.app.TopWindow.impt.write_spreadsheet()
+        file = openpyxl.load_workbook(self.app.TopWindow.impt.data_filename)
 
         values['sheet_names'] = set(file.sheetnames)
         values['row_count'] = {}
@@ -277,17 +282,17 @@ class BulkImportTest(unittest.TestCase):
         self.assertEqual(test_values, values)
 
     def test_spreadsheet(self):
-        values = self.impt._test_spreadsheet()
-        key_row = self.impt.ws[3]
+        values = self.app.TopWindow.impt._test_spreadsheet()
+        key_row = self.app.TopWindow.impt.ws[3]
         test_values = {key_row[i].value: True for i in range(len(key_row))}
         self.assertEqual(test_values, values)
 
     def test_check_sheets(self):
-        self.assertTrue(self.impt._check_sheets())
+        self.assertTrue(self.app.TopWindow.impt._check_sheets())
 
     def test_check_persontaxa(self):
         test_values = [0, 'Complete']
-        status, message = self.impt._check_persontaxa()
+        status, message = self.app.TopWindow.impt._check_persontaxa()
         self.assertEqual(test_values, [status, message])
 
 

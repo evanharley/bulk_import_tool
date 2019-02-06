@@ -6,6 +6,7 @@
 
 import wx
 from bulk_import_tool import ImportTools
+from pubsub import pub
 
 
 # begin wxGlade: dependencies
@@ -13,6 +14,38 @@ from bulk_import_tool import ImportTools
 
 # begin wxGlade: extracode
 # end wxGlade
+
+class ImportToolsProgressDialog(wx.Dialog):
+        def __init__(self):
+            """Constructor"""
+            wx.Dialog.__init__(self, None, title="Progress")
+            self.SetSize((400, 200))
+            self.count = 0
+            self.max = 0
+            self.message = wx.TextCtrl(self, wx.ID_ANY, 'Please Wait...', style = wx.TE_READONLY)
+            self.progress = wx.Gauge(self, range=4)
+            self.progress.SetMinSize((400, 50))
+            sizer = wx.BoxSizer(wx.VERTICAL)
+            sizer.Add(self.message, 0, wx.ALIGN_CENTRE)
+            sizer.Add(self.progress, 1, wx.EXPAND)
+            self.SetSizer(sizer)
+ 
+            # create a pubsub receiver
+            pub.subscribe(self.updateProgress, "UpdateMessage")
+
+        def updateProgress(self, arg1, arg2=0, arg3=0):
+            """"""
+            if arg2 == 1:
+                self.count = 0
+                self.max = arg3
+            else:
+                self.count += 1
+            self.message.SetValue(arg1)
+ 
+            if self.count >= self.max:
+                self.Destroy()
+ 
+            self.progress.SetValue(self.count)
 
 class ToolsWindow(wx.Frame):
     def __init__(self, *args, **kwds):
@@ -92,20 +125,38 @@ class ToolsWindow(wx.Frame):
         event.Skip()
 
     def write_spreadsheet(self, event):
-        write = self.impt.write_spreadsheet()
-        if write == 0:
-            dialog = wx.MessageBox('Writing Spread sheet is complete', 'Info', 
-                          wx.OK | wx.ICON_INFORMATION)
+        if self.impt.discipline == '':
+            err_dlg = wx.MessageBox('Discipline not selected', 
+                                    'ERROR!!', wx.OK | wx.ICON_ERROR)
+            return 0
+        else:
+            prg_dlg = ImportToolsProgressDialog()
+            prg_dlg.max = 4
+            prg_dlg.Show()
+            write = self.impt.write_spreadsheet()
+            if write == 0:
+                dialog = wx.MessageBox('Writing Spread sheet is complete', 'Info', 
+                              wx.OK | wx.ICON_INFORMATION)
         event.Skip()
 
     def add_ids(self, event):
-        self.impt._add_ids()
+        if self.impt.discipline == '':
+            err_dlg = wx.MessageBox('Discipline not selected', 
+                                    'ERROR!!', wx.OK | wx.ICON_ERROR)
+            return 0
+        prg_dlg = ImportToolsProgressDialog()
+        prg_dlg.max = 4
+        write, message = self.impt._add_ids()
         if write == 0:
             dialog = wx.MessageBox('Adding IDs is complete', 'Info',
                          wx.OK | wx.ICON_INFORMATION)
         event.Skip()
 
     def write_to_database(self, event):
+        if self.impt.discipline == '':
+            err_dlg = wx.MessageBox('Discipline not selected', 
+                                    'ERROR!!', wx.OK | wx.ICON_ERROR)
+            return 0
         opt = ['Production', 'Test']
         dialog = wx.SingleChoiceDialog(self, 'Choose which datbase to write to',
                                       'Database Chooser', opt, wx.CHOICEDLG_STYLE)
@@ -116,6 +167,8 @@ class ToolsWindow(wx.Frame):
             self.impt._to_prod()
         else:
             self.impt._to_test()
+        prg_dlg = ImportToolsProgressDialog()
+        prg_dlg.Show()
         self.impt.write_to_db()
         event.Skip()
 

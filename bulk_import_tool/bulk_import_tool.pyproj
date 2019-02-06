@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>d8408eb1-6abd-4ec0-ab78-17fa78155ce8</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>bulk_import_tool.py</StartupFile>
+    <StartupFile>bulk_import_tool_gui.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -25,6 +25,7 @@
     <Compile Include="bulk_import_test.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="bulk_import_tool_gui.py" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in

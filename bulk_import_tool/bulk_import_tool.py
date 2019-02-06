@@ -1,5 +1,6 @@
 import pyodbc
 import openpyxl
+from pubsub import pub
 
 # Tools for the Bulk Import of Natural History Specimens
 
@@ -16,6 +17,10 @@ class ImportTools:
         self.cursor = self._connection.cursor()
         self.data_file = None
         self.ws = None
+        self.write_status = {'GeographicSite': False, 
+                             'CollectionEvent': False,
+                             'Taxonomy': False,
+                             'Triggers': False}
         
     
     def _get_file(self, filename):
@@ -344,19 +349,19 @@ class ImportTools:
 
         persons = self._find_persons()
         self._write_persontaxa(persons, 'Person')
-        print("Persons Complete")
+        pub.sendMessage('UpdateMessage', arg1="Persons Complete")
 
         taxa = self._find_taxa()
         self._write_persontaxa(taxa, 'Taxon')
-        print("Taxa Complete")
+        pub.sendMessage('UpdateMessage', arg1="Taxa Complete")
 
         sites = self._generate_sites()
         self._write_siteevent(sites, "Site")
-        print("Sites Complete")
+        pub.sendMessage('UpdateMessage', arg1="Sites Complete")
 
         events = self._generate_events()
         self._write_siteevent(events, 'Event')
-        print("Events Complete")
+        pub.sendMessage('UpdateMessage', arg1="Events Complete")
 
         self.data_file.save(self.data_filename[:-5] + '_test.xlsx')
         return 0 
@@ -427,6 +432,7 @@ class ImportTools:
                 self._handle_persontaxa(data)
             if sheet in ['Site', 'Event']:
                 self._handle_siteevent(data)
+            pub.sendMessage('UpdateMessage', arg1="{} Complete".format(sheet))
             
         self.data_file.save(self.data_filename)
         return 0, 'Done'
@@ -472,8 +478,6 @@ class ImportTools:
                     id = self.ws.cell(row=row, column=52).value
                 else:
                     id = self.ws.cell(row=row, column=14).value
-                if value != data[id][key]:
-                    self.ws.cell(row=row, column=col + 1, value=data[id][key])
         return 0
 
     def _to_prod(self):
@@ -485,9 +489,75 @@ class ImportTools:
         return 0, 'Database connection changed to Test'
 
     def _import_site(self):
+        pub.sendMessage('UpdateMessage', arg1="Writing Sites",
+                        arg2 = 1,
+                        arg3 = self.data_file['Site'].max_row)
+        relevant_cols = self._find_relevant_column('Sites')
+        keys = {self.ws[2][col].value: self.ws[3][col].value 
+                for col in relevant_cols}
+        max_query = "Select Max(geo_site_id) from GeographicSite"
+        max_id = self.cursor.execute(max_query).fetchone()[0]
+        working_sheet = self.data_file['Site']
+        self._set_identity_insert('GeographicSite')
+        for row in range(2, working_sheet.max_row):
+            data = {working_sheet[1][col].value: working_sheet[row][col].value
+                    for col in range(1, working_sheet.max_column) 
+                    if working_sheet[row][col].value is not None}
+
+            max_id += 1
+            insert_keys = 'geo_site_id, discipline_cd, '
+            insert_keys += ', '.join([keys[item].split('.')[1] for item in data.keys()])
+            query_part_1 = "INSERT INTO GeographicSite({})".format(insert_keys)
+            query_part_2 = "VALUES ({}, '{}'".format(max_id, self.discipline)
+            for datum in data.keys():
+                if isinstance(data[datum], str):
+                    value = "'{}'".format(data[datum])
+                else:
+                    value = data[datum]
+                query_part_2 += ", {}".format(value)
+            query = query_part_1 + ' \n' + query_part_2 + ')'
+            item = data["Collector's Site ID"]
+            pub.sendMessage('UpdateMessage', arg1="{} written to db".format(item))
+            self.cursor.execute(query)
+        self._set_identity_insert('GeographicSite')
         return 0
 
     def _import_event(self):
+        pub.sendMessage('UpdateMessage', arg1="Writing Events",
+                        arg2 = 1,
+                        arg3 = self.data_file['Event'].max_row)
+        relevant_cols = self._find_relevant_column('Events')
+        keys = {self.ws[2][col].value: self.ws[3][col].value 
+                for col in relevant_cols}
+        max_query = "Select Max(coll_event_id) from CollectionEvent"
+        max_id = self.cursor.execute(max_query).fetchone()[0]
+        working_sheet = self.data_file['Event']
+        self._set_identity_insert('CollectionEvent')
+        for row in range(2, working_sheet.max_row):
+            data = {working_sheet[1][col].value: working_sheet[row][col].value
+                    for col in range(1, working_sheet.max_column) 
+                    if working_sheet[row][col].value is not None}
+
+            max_id += 1
+            insert_keys = 'coll_event_id, discipline_cd, '
+            insert_keys += ', '.join([keys[item].split('.')[1] for item in data.keys()])
+            query_part_1 = "INSERT INTO CollectionEvent({})".format(insert_keys)
+            query_part_2 = "VALUES ({}, '{}'".format(max_id, self.discipline)
+            for datum in data.keys():
+                if isinstance(data[datum], str):
+                    value = "'{}'".format(data[datum])
+                else:
+                    value = data[datum]
+                query_part_2 += ", {}".format(value)
+            query = query_part_1 + ' \n' + query_part_2 + ')'
+            item = data["Event Number"]
+            pub.sendMessage('UpdateMessage', arg1="{} written to db".format(item))
+            self.cursor.execute(query)
+        self._set_identity_insert('GeographicSite')
+        return 0
+
+    def _import_site_event(self):
+        
         return 0
 
     def _import_persons(self):
@@ -496,7 +566,42 @@ class ImportTools:
     def _import_specimen(self):
         return 0
 
+    def _set_identity_insert(self, table):
+        if self.write_status[table] == False:
+            query = 'set identity_insert {} on;'.format(table)
+        else:
+            query = 'set identity_insert {} off;'.format(table)
+        self.cursor.execute(query)
+        self.write_status[table] = not self.write_status[table]
+        return 0
+
+    def _set_triggers(self):
+        if self.write_status['Triggers'] == False:
+            status = 'DISABLE'
+        else:
+            status = 'ENABLE'
+        query = '''{0} TRIGGER create_sname ON Taxon;
+                   {0} Trigger set_is_component on Component;
+                   {0} TRIGGER set_qualified_name ON Taxonomy;
+                   {0} TRIGGER clear_item_name ON Taxonomy;
+                   {0} TRIGGER update_person_search_name ON Person;
+                   {0} TRIGGER update_artist_search_name ON Artist;
+                   {0} TRIGGER create_sname on Taxon;
+                   {0} TRIGGER create_location_code on Location;'''.format(status)
+        self.cursor.execute(query)
+
     def write_to_db(self):
         # Writes the data from the import spreadsheet to the database
+        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to off',
+                        arg2 = 1, arg3 = 1)
+        self._set_triggers()
+        self._import_site()
+        self._import_event()
+        self._import_specimen()
+        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to on',
+                        arg2 = 1, arg3 = 1)
+        self._set_triggers()
+        self.cursor.commit()
+        pub.sendMessage('UpdateMessage', arg1 = 'Complete!!')
         return 0
 

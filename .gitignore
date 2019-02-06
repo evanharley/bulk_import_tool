@@ -261,3 +261,9 @@ paket-files/
 # Python Tools for Visual Studio (PTVS)
 __pycache__/
 *.pyc
+/bulk_import_tool/DBChooserDialog.wxg.bak
+/bulk_import_tool/DBChooserDialog.wxg
+/bulk_import_tool/DBChooserDialog.py
+/bulk_import_tool/bulk_import_tool_gui.wxg.bak
+/bulk_import_tool/bulk_import_tool_gui.wxg
+/bulk_import_tool/_test.xlsx
