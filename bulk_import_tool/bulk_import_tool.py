@@ -22,8 +22,7 @@ class ImportTools:
                              'Taxonomy': False,
                              'Triggers': False}
         self.proc_log = []
-        
-    
+
     def _get_file(self, filename):
         self.data_filename = filename
         try:
@@ -77,7 +76,7 @@ class ImportTools:
             query = "Select person_id from Person where search_name = '{}'".format(name)
             results = self.cursor.execute(query).fetchall()
             persons[name] = []
-            if results != []:
+            if results is not []:
                 for i in range(len(results)):
                     persons[name].append(results[i][0])
             else:
@@ -119,7 +118,7 @@ class ImportTools:
         elif method == 'FieldMeasurement':
             table_id = ['FieldMeasurement.']
         elif method == 'DisciplineItem':
-            disc = self.get_full_disc()
+            disc = self._get_full_disc()
             table_id = ['[DISCIPLINE].', disc + 'Item.']
         elif method == 'ImptPerson':
             table_id = ['Person_id']
@@ -132,7 +131,7 @@ class ImportTools:
 
         for col in range(1, len(headder_row)):
             if any(headder_row[col].value.startswith(id) for id in table_id) \
-            and col not in relevant_cols:
+                    and col not in relevant_cols:
                 relevant_cols.append(col)
         return relevant_cols
         
@@ -479,8 +478,8 @@ class ImportTools:
 
     def _import_site(self):
         pub.sendMessage('UpdateMessage', arg1="Writing Sites",
-                        arg2 = 1,
-                        arg3 = self.data_file['Site'].max_row)
+                        arg2=1,
+                        arg3=self.data_file['Site'].max_row)
         relevant_cols = self._find_relevant_column('Sites')
         keys = {self.ws[2][col].value: self.ws[3][col].value 
                 for col in relevant_cols}
@@ -513,8 +512,8 @@ class ImportTools:
 
     def _import_event(self):
         pub.sendMessage('UpdateMessage', arg1="Writing Events",
-                        arg2 = 1,
-                        arg3 = self.data_file['Event'].max_row)
+                        arg2=1,
+                        arg3=self.data_file['Event'].max_row)
         relevant_cols = self._find_relevant_column('Events')
         keys = {self.ws[2][col].value: self.ws[3][col].value 
                 for col in relevant_cols}
@@ -550,7 +549,7 @@ class ImportTools:
         for row in range(4, self.ws.max_row + 1):
             site = self.ws[row][52]
             event = self.ws[row][14]
-            site_event.append(selif.query_site_event(site, event))
+            site_event.append(self.query_site_event(site, event))
         query = '''Insert into GeographicSite_CollectionEvent(geo_site_id, coll_event_id)
                     Values ({0}, {1})'''
         site_event = set(site_event)
@@ -565,30 +564,53 @@ class ImportTools:
 
         site_query = "Select geo_site_id from GeographicSite where collector_site_id = '{}'"
         event_query = "Select coll_event_id from CollectionEvent where event_num = '{}'"
-
         site = self.cursor.execute(site_query.format(site))
         event = self.cursor.execute(event_query.format(event))
 
-        return (site, event)
+        return site, event
 
     def _import_specimen(self):
         pub.sendMessage('UpdateMessage', arg1="Writing Specimens",
-                        arg2 = 1,
-                        arg3 = self.ws.max_row)
+                        arg2=1,
+                        arg3=self.ws.max_row)
         for row in range(4, self.ws.max_row + 1):
             data_row = self.ws[row]
             max_query = "Select Max(item_id) from Item"
             max_id = self.cursor.execute(max_query).fetchone()[0] + 1 
-            item = self._prep_item(data_row)
-            nhitem = self._prep_nhitem(data_row)
-            disc_item = self._prep_discipline_item(data_row)
-            preparation = self._prep_preparation(data_row)
-            taxonomy = self._prep_taxon(data_row)
-            persons = self._prep_persons(data_row)
 
-            for process in [item, nhitem, disc_item, preparation, taxonomy, persons]:
-                print('stuff')
-            pub.sendMessage('UpdateMessage', arg1='')
+            for process in ['item', 'nhitem', 'disc_item', 'preparation', 'taxonomy', 'persons']:
+                if process == 'item':
+                    values = self._prep_item(data_row)
+                    query_part_1 = "Insert into Item ('item_id, {}')".format(', '.join(list(values.keys())))
+
+                elif process == 'nhitem':
+                    values = self._prep_nhitem(data_row)
+                    query_part_1 = "Insert into NaturalHistoryItem('item_id, {}')".format(
+                                                                                        ', '.join(list(values.keys())))
+                elif process == 'disc_item':
+                    values = self._prep_discipline_item(data_row)
+                    query_part_1 = "Insert into {0}('{1}')".format(self._get_full_disc(),
+                                                                   ', '.join(list(values.keys())))
+                elif process == 'preparation':
+                    values = self._prep_preparation(data_row)
+                    query_part_1 = "Insert into Preparation('{}')".format(', '.join(list(values.keys())))
+
+                elif process == 'taxonomy':
+                    values = self._prep_taxon(data_row)
+                    query_part_1 = "Insert into Taxonomy('{}')".format(', '.join(list(values.keys())))
+
+                elif process == 'persons':
+                    self._prep_persons()
+                query_part_2 = "Values({}".format(max_id)
+                for datum in values.keys():
+                    if isinstance(values[datum], str):
+                        value = "'{}'".format(values[datum])
+                    else:
+                        value = values[datum]
+                    query_part_2 += ", {}".format(value)
+                query = query_part_1 + '/n' + query_part_2 + ')'
+                self.cursor.execute(query)
+            pub.sendMessage('UpdateMessage', arg1='{} written to database'.format(max_id))
         return 0
 
     def _prep_item(self, row):
@@ -613,13 +635,17 @@ class ImportTools:
         return stuff
 
     def _prep_taxon(self, row):
+        taxon = []
         print('stuff')
+        return taxon
 
     def _prep_persons(self, row):
+        persons = []
         print('stuff')
+        return persons
 
     def _set_identity_insert(self, table):
-        if self.write_status[table] == False:
+        if self.write_status[table] is False:
             query = 'set identity_insert {} on;'.format(table)
         else:
             query = 'set identity_insert {} off;'.format(table)
@@ -628,7 +654,7 @@ class ImportTools:
         return 0
 
     def _set_triggers(self):
-        if self.write_status['Triggers'] == False:
+        if self.write_status['Triggers'] is False:
             status = 'DISABLE'
         else:
             status = 'ENABLE'
@@ -643,47 +669,42 @@ class ImportTools:
         self.cursor.execute(query)
 
     def write_siteevent_to_db(self):
-        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to off',
-                        arg2 = 1, arg3 = 1)
+        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
+                        arg2=1, arg3=1)
         self._set_triggers()
         self._import_site()
         self._import_event()
-        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to on',
-                        arg2 = 1, arg3 = 1)
+        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
+                        arg2=1, arg3=1)
         self._set_triggers()
         self.cursor.commit()
-        pub.sendMessage('UpdateMessage', arg1 = 'Complete!!')
+        pub.sendMessage('UpdateMessage', arg1='Complete!!')
         self.proc_log.append('Import GeographicSite and CollectionEvent')
 
     def write_specimen_taxa_persons_to_db(self):
-        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to off',
-                        arg2 = 1, arg3 = 1)
+        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
+                        arg2=1, arg3=1)
         self._set_triggers()
         self._import_specimen()
-        self._import_taxa()
-        self._import_persons()
-        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to on',
-                        arg2 = 1, arg3 = 1)
+        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
+                        arg2=1, arg3=1)
         self._set_triggers()
         self.cursor.commit()
-        pub.sendMessage('UpdateMessage', arg1 = 'Complete!!')
+        pub.sendMessage('UpdateMessage', arg1='Complete!!')
         self.proc_log.append('Import Complete')
 
     def write_to_db(self):
         # Writes the data from the import spreadsheet to the database
-        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to off',
-                        arg2 = 1, arg3 = 1)
+        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
+                        arg2=1, arg3=1)
         self._set_triggers()
         self._import_site()
         self._import_event()
         self._import_specimen()
-        self._import_taxa()
-        self._import_persons()
-        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to on',
-                        arg2 = 1, arg3 = 1)
+        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
+                        arg2=1, arg3=1)
         self._set_triggers()
         self.cursor.commit()
-        pub.sendMessage('UpdateMessage', arg1 = 'Complete!!')
+        pub.sendMessage('UpdateMessage', arg1='Complete!!')
         self.proc_log.append('Import Complete')
         return 0
-
