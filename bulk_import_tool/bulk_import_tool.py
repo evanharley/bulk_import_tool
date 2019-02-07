@@ -21,6 +21,7 @@ class ImportTools:
                              'CollectionEvent': False,
                              'Taxonomy': False,
                              'Triggers': False}
+        self.proc_log = []
         
     
     def _get_file(self, filename):
@@ -30,6 +31,24 @@ class ImportTools:
         except FileNotFoundError:
             return None
         self.ws = self.data_file['IMM_template']
+
+    def _write_prog(self):
+        prog_log = open('prog_log.log', 'a')
+        prog_log.write('{0}: {1}'.format(self.data_filename, ', '.join(self.proc_log)))
+        return 0
+
+    def _get_prog_info(self):
+        temp = ''
+        try:
+            prog_log = open('prog_log.log', 'r')
+        except FileNotFoundError:
+            self.proc_log = []
+            return 0
+        for row in prog_log:
+            if row.startswith(self.data_filename):
+                temp = row[row.find(': ') + 1:].strip(' ').split(', ')
+        self.proc_log = temp
+        return 0
 
     def _find_persons(self):
         # Return all unique persons in the spreadsheet for import
@@ -64,7 +83,21 @@ class ImportTools:
             else:
                 persons[name] = ['NEW?']
         return persons
-        
+
+    def _get_full_disc(self):
+        disciplines = {
+            'bot': 'Botany',
+            'ent': 'Entomology',
+            'geo': 'Geology',
+            'her': 'Herpetology',
+            'ich': 'Ichthyology',
+            'inv': 'Invertebrate',
+            'mam': 'Mammalogy',
+            'orn': 'Ornithology',
+            'pal': 'Paleontology'
+            }
+        return disciplines[self.discipline]
+
     def _find_relevant_column(self, method):
         # Return the index of the columns relevant to the _find methods above.
         # Values in a list of indices
@@ -76,76 +109,30 @@ class ImportTools:
         elif method == 'Taxon':
             table_id = ['Taxonomy.taxon_id']
         elif method == 'Events':
-            table_id = ['CollectionEvent.bait',
-                        'CollectionEvent.collec_method',
-                        'CollectionEvent.collection_date',	
-                        'CollectionEvent.date_remarks',
-                        'CollectionEvent.discipline_cd',
-                        'CollectionEvent.event_num',
-                        'CollectionEvent.field_event',	
-                        'CollectionEvent.net_gear_trap',
-                        'CollectionEvent.note',	
-                        'CollectionEvent.permit_num', 
-                        'CollectionEvent.season',	
-                        'CollectionEvent.start_time',
-                        'CollectionEvent.stop_time', 
-                        'CollectionEvent.time_standard', 
-                        'CollectionEvent.sampling_duration',
-                        'CollectionEvent.vessel_name',	
-                        'CollectionEvent.air_temp', 
-                        'CollectionEvent.at_unit', 
-                        'CollectionEvent.cloud_cover',	
-                        'CollectionEvent.weather_remarks',	
-                        'CollectionEvent.wind_direction',
-                        'CollectionEvent.wind_speed',
-                        'CollectionEvent.ws_unit']
+            table_id = ['CollectionEvent.']
         elif method == 'Sites':
-            table_id = ['GeographicSite.max_easl',
-                        'GeographicSite.min_easl',
-                        'GeographicSite.note_easl',
-                        'GeographicSite.unit_easl',
-                        'GeographicSite.biogeoclimatic',
-                        'GeographicSite.biozone',
-                        'GeographicSite.continent',
-                        'GeographicSite.country',
-                        'GeographicSite.county',
-                        'GeographicSite.district',
-                        'GeographicSite.ecoprovince',
-                        'GeographicSite.fossile_ref_num',
-                        'GeographicSite.mine_name',
-                        'GeographicSite.natural_region',
-                        'GeographicSite.park',
-                        'GeographicSite.prov_state',
-                        'GeographicSite.township',
-                        'GeographicSite.water_body',
-                        'GeographicSite.collector_site_id',
-                        'GeographicSite.description',
-                        'GeographicSite.discipline_cd',
-                        'GeographicSite.location_name',
-                        'GeographicSite.reference',
-                        'GeographicSite.remarks',
-                        'GeoSiteNote.note_date',
-                        'GeoSiteNote.note',
-                        'GeoSiteNote.title',
-                        'GeographicSite.accuracy',
-                        'GeographicSite.latlong_approximate',
-                        'GeographicSite.latitude',
-                        'GeographicSite.latitude_stop',
-                        'GeographicSite.longitude',
-                        'GeographicSite.longitude_stop',
-                        'GeographicSite.na_datapoint',
-                        'GeographicSite.non_nts_map_ref',
-                        'GeographicSite.nts_ref',
-                        'GeographicSite.utm_datapoint',
-                        'GeographicSite.utm_east',
-                        'GeographicSite.utm_north',
-                        'GeographicSite.utm_zone',
-                        'GeographicSite.primary_river_drainage',
-                        'GeographicSite.secondary_river_drainage',
-                        'GeographicSite.tertiary_river_drainage']
+            table_id = ['GeographicSite.', 'GeoSiteNote']
+        elif method == 'Item':
+            table_id = ['Item']
+        elif method == 'NHItem':
+            table_id = ['NaturalHistoryItem.']
+        elif method == 'FieldMeasurement':
+            table_id = ['FieldMeasurement.']
+        elif method == 'DisciplineItem':
+            disc = self.get_full_disc()
+            table_id = ['[DISCIPLINE].', disc + 'Item.']
+        elif method == 'ImptPerson':
+            table_id = ['Person_id']
+        elif method == 'ImptTaxon':
+            table_id = ['Taxonomy']
+        elif method == 'Preparation':
+            table_id = ['Preparation.']
+        elif method == 'ChemicalTreatment':
+            table_id = ['ChemicalTreatment']
 
         for col in range(1, len(headder_row)):
-            if headder_row[col].value in table_id and col not in relevant_cols:
+            if any(headder_row[col].value.startswith(id) for id in table_id) \
+            and col not in relevant_cols:
                 relevant_cols.append(col)
         return relevant_cols
         
@@ -364,6 +351,7 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', arg1="Events Complete")
 
         self.data_file.save(self.data_filename[:-5] + '_test.xlsx')
+        self.proc_log.append('Write Spreadsheet')
         return 0 
 
     def _test_spreadsheet(self):
@@ -435,6 +423,7 @@ class ImportTools:
             pub.sendMessage('UpdateMessage', arg1="{} Complete".format(sheet))
             
         self.data_file.save(self.data_filename)
+        self.proc_log.append('IDs added')
         return 0, 'Done'
 
     def _handle_persontaxa(self, data):
@@ -501,7 +490,7 @@ class ImportTools:
         self._set_identity_insert('GeographicSite')
         for row in range(2, working_sheet.max_row):
             data = {working_sheet[1][col].value: working_sheet[row][col].value
-                    for col in range(1, working_sheet.max_column) 
+                    for col in range(1, working_sheet.max_column + 1) 
                     if working_sheet[row][col].value is not None}
 
             max_id += 1
@@ -535,7 +524,7 @@ class ImportTools:
         self._set_identity_insert('CollectionEvent')
         for row in range(2, working_sheet.max_row):
             data = {working_sheet[1][col].value: working_sheet[row][col].value
-                    for col in range(1, working_sheet.max_column) 
+                    for col in range(1, working_sheet.max_column + 1) 
                     if working_sheet[row][col].value is not None}
 
             max_id += 1
@@ -557,14 +546,77 @@ class ImportTools:
         return 0
 
     def _import_site_event(self):
-        
+        site_event = []
+        for row in range(4, self.ws.max_row + 1):
+            site = self.ws[row][52]
+            event = self.ws[row][14]
+            site_event.append(selif.query_site_event(site, event))
+        query = '''Insert into GeographicSite_CollectionEvent(geo_site_id, coll_event_id)
+                    Values ({0}, {1})'''
+        site_event = set(site_event)
+        for pair in site_event:
+            self.cursor.execute(query.format(pair[0], pair[1]))
+
         return 0
 
-    def _import_persons(self):
-        return 0
+    def _query_site_event(self, site_event: tuple):
+        site = site_event[0]
+        event = site_event[1]
+
+        site_query = "Select geo_site_id from GeographicSite where collector_site_id = '{}'"
+        event_query = "Select coll_event_id from CollectionEvent where event_num = '{}'"
+
+        site = self.cursor.execute(site_query.format(site))
+        event = self.cursor.execute(event_query.format(event))
+
+        return (site, event)
 
     def _import_specimen(self):
+        pub.sendMessage('UpdateMessage', arg1="Writing Specimens",
+                        arg2 = 1,
+                        arg3 = self.ws.max_row)
+        for row in range(4, self.ws.max_row + 1):
+            data_row = self.ws[row]
+            max_query = "Select Max(item_id) from Item"
+            max_id = self.cursor.execute(max_query).fetchone()[0] + 1 
+            item = self._prep_item(data_row)
+            nhitem = self._prep_nhitem(data_row)
+            disc_item = self._prep_discipline_item(data_row)
+            preparation = self._prep_preparation(data_row)
+            taxonomy = self._prep_taxon(data_row)
+            persons = self._prep_persons(data_row)
+
+            for process in [item, nhitem, disc_item, preparation, taxonomy, persons]:
+                print('stuff')
+            pub.sendMessage('UpdateMessage', arg1='')
         return 0
+
+    def _prep_item(self, row):
+        relevant_cols = self._find_relevant_column('Item')
+        item = {self.ws[3][col].value[6:]: row[col].value 
+                for col in relevant_cols}        
+        return item
+
+    def _prep_nhitem(self, row):
+        stuff = 'stuff'
+        print(stuff)
+        return stuff
+
+    def _prep_discipline_item(self, row):
+        stuff = 'stuff'
+        print(stuff)
+        return stuff
+
+    def _prep_preparation(self, row):
+        stuff = 'stuff'
+        print(stuff)
+        return stuff
+
+    def _prep_taxon(self, row):
+        print('stuff')
+
+    def _prep_persons(self, row):
+        print('stuff')
 
     def _set_identity_insert(self, table):
         if self.write_status[table] == False:
@@ -590,6 +642,33 @@ class ImportTools:
                    {0} TRIGGER create_location_code on Location;'''.format(status)
         self.cursor.execute(query)
 
+    def write_siteevent_to_db(self):
+        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to off',
+                        arg2 = 1, arg3 = 1)
+        self._set_triggers()
+        self._import_site()
+        self._import_event()
+        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to on',
+                        arg2 = 1, arg3 = 1)
+        self._set_triggers()
+        self.cursor.commit()
+        pub.sendMessage('UpdateMessage', arg1 = 'Complete!!')
+        self.proc_log.append('Import GeographicSite and CollectionEvent')
+
+    def write_specimen_taxa_persons_to_db(self):
+        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to off',
+                        arg2 = 1, arg3 = 1)
+        self._set_triggers()
+        self._import_specimen()
+        self._import_taxa()
+        self._import_persons()
+        pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to on',
+                        arg2 = 1, arg3 = 1)
+        self._set_triggers()
+        self.cursor.commit()
+        pub.sendMessage('UpdateMessage', arg1 = 'Complete!!')
+        self.proc_log.append('Import Complete')
+
     def write_to_db(self):
         # Writes the data from the import spreadsheet to the database
         pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to off',
@@ -598,10 +677,13 @@ class ImportTools:
         self._import_site()
         self._import_event()
         self._import_specimen()
+        self._import_taxa()
+        self._import_persons()
         pub.sendMessage('UpdateMessage', arg1 = 'Setting Triggers to on',
                         arg2 = 1, arg3 = 1)
         self._set_triggers()
         self.cursor.commit()
         pub.sendMessage('UpdateMessage', arg1 = 'Complete!!')
+        self.proc_log.append('Import Complete')
         return 0
 

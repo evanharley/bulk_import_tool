@@ -24,7 +24,7 @@ class ImportToolsProgressDialog(wx.Dialog):
             self.max = 0
             self.message = wx.TextCtrl(self, wx.ID_ANY, 'Please Wait...', style = wx.TE_READONLY)
             self.progress = wx.Gauge(self, range=4)
-            self.progress.SetMinSize((400, 50))
+            self.progress.SetMaxSize((400, 50))
             sizer = wx.BoxSizer(wx.VERTICAL)
             sizer.Add(self.message, 0, wx.ALIGN_CENTRE)
             sizer.Add(self.progress, 1, wx.EXPAND)
@@ -60,15 +60,19 @@ class ToolsWindow(wx.Frame):
         self.button_6 = wx.Button(self, wx.ID_ANY, "Write Spreadsheet")
         self.button_7 = wx.Button(self, wx.ID_ANY, "Add IDs")
         self.button_8 = wx.Button(self, wx.ID_ANY, "Write to DB")
-
-        self.__set_properties()
-        self.__do_layout()
         file_dialog = wx.FileDialog(self, "Open Template", wildcard='.xlsx Files (*.xlsx)|*.xlsx',
                                     style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
         file_dialog.ShowModal()
         self.impt = ImportTools()
         self.impt._get_file(file_dialog.GetPath())
+        self.impt._get_prog_info()
         file_dialog.Destroy()
+        if self.impt.proc_log != []:
+            self.status = self.impt.proc_log[-1]
+        else:
+            self.status = 'New Import'
+        self.__set_properties()
+        self.__do_layout()
         self.Bind(wx.EVT_BUTTON, self.set_discipline, self.button_3)
         self.Bind(wx.EVT_BUTTON, self.write_spreadsheet, self.button_6)
         self.Bind(wx.EVT_BUTTON, self.add_ids, self.button_7)
@@ -94,6 +98,9 @@ class ToolsWindow(wx.Frame):
                                 style=wx.ALIGN_CENTER)
         label_1.SetMinSize((257, 30))
         sizer_3.Add(label_1, 0, wx.ALIGN_CENTER | wx.ALL, 0)
+
+        label_2 = wx.TextCtrl(self, wx.ID_ANY, self.status, style = wx.TE_READONLY)
+        sizer_3.Add(label_2, 0, wx.ALIGN_CENTER | wx.ALL, 0)
         sizer_5.Add(self.choice_1, 0, wx.ALIGN_CENTER, 0)
         sizer_5.Add(self.button_3, 0, wx.ALIGN_CENTER, 0)
         sizer_3.Add(sizer_5, 0, wx.EXPAND, 0)
@@ -137,6 +144,7 @@ class ToolsWindow(wx.Frame):
             if write == 0:
                 dialog = wx.MessageBox('Writing Spread sheet is complete', 'Info', 
                               wx.OK | wx.ICON_INFORMATION)
+        self.impt._write_prog()
         event.Skip()
 
     def add_ids(self, event):
@@ -150,6 +158,7 @@ class ToolsWindow(wx.Frame):
         if write == 0:
             dialog = wx.MessageBox('Adding IDs is complete', 'Info',
                          wx.OK | wx.ICON_INFORMATION)
+        self.impt._write_prog()
         event.Skip()
 
     def write_to_database(self, event):
@@ -167,9 +176,23 @@ class ToolsWindow(wx.Frame):
             self.impt._to_prod()
         else:
             self.impt._to_test()
+        processes = ['Write GeographicSites and Collection Events',
+                     'Write Specimen, Person and Taxonomy Data',
+                     'Full Import']
+        process_dlg = wx.SingleChoicDialog(self, 'Choose the process you wish to perform',
+                                           'Process Chooser', processes, wx.CHOICEDLG_STYLE)
+        if process_dlg.ShowModal() == wx.ID_OK:
+            process = process_dlg.GetStringSelection()
+        process_dlg.Destroy()
         prg_dlg = ImportToolsProgressDialog()
         prg_dlg.Show()
-        self.impt.write_to_db()
+        if process == 'Full Import':
+            self.impt.write_to_db()
+        elif process == 'Write GeographicSites and Collection Events':
+            self.impt.write_siteevent_to_db()
+        elif process == 'Write Specimen, Person and Taxonomy Data':
+            self.impt.write_specimen_taxa_persons_to_db()
+        self.impt._write_prog()
         event.Skip()
 
 
