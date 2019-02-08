@@ -12,7 +12,11 @@ class ImportTools:
         # Discipline should be gotten from user at the start of the import
         # so when coding GUI it should be included
         self.data_filename = ''
-        self.discipline = '' 
+        self.discipline = ''
+        if self.discipline in ['bot', 'ent', 'geo', 'her', 'ich', 'inv', 'mam', 'orn', 'pal']:
+            self.area_cd = 'natural'
+        else:
+            self.area_cd = 'human'
         self._connection = pyodbc.connect('DSN=ImportTest; Trusted_Connection=yes;')
         self.cursor = self._connection.cursor()
         self.data_file = None
@@ -100,13 +104,13 @@ class ImportTools:
     def _find_relevant_column(self, method):
         # Return the index of the columns relevant to the _find methods above.
         # Values in a list of indices
-        headder_row = self.ws[3]
+        header_row = self.ws[3]
         relevant_cols = []
         table_id = ''
         if method == 'Person':
-            table_id = ['Person.person_id']
+            table_id = ['Person.search_name']
         elif method == 'Taxon':
-            table_id = ['Taxonomy.taxon_id']
+            table_id = ['Taxon.term']
         elif method == 'Events':
             table_id = ['CollectionEvent.']
         elif method == 'Sites':
@@ -121,18 +125,19 @@ class ImportTools:
             disc = self._get_full_disc()
             table_id = ['[DISCIPLINE].', disc + 'Item.']
         elif method == 'ImptPerson':
-            table_id = ['Person_id']
+            table_id = ['Person.person_id']
         elif method == 'ImptTaxon':
-            table_id = ['Taxonomy']
+            table_id = ['Taxonomy.', 'taxon_id']
         elif method == 'Preparation':
             table_id = ['Preparation.']
         elif method == 'ChemicalTreatment':
-            table_id = ['ChemicalTreatment']
+            table_id = ['ChemicalTreatment.']
 
-        for col in range(1, len(headder_row)):
-            if any(headder_row[col].value.startswith(id) for id in table_id) \
+        for col in range(1, len(header_row)):
+            if any(header_row[col].value.startswith(id) for id in table_id) \
                     and col not in relevant_cols:
                 relevant_cols.append(col)
+
         return relevant_cols
         
     def _split_persons(self, person_names):
@@ -349,7 +354,7 @@ class ImportTools:
         self._write_siteevent(events, 'Event')
         pub.sendMessage('UpdateMessage', arg1="Events Complete")
 
-        self.data_file.save(self.data_filename[:-5] + '_test.xlsx')
+        self.data_file.save(self.data_filename)
         self.proc_log.append('Write Spreadsheet')
         return 0 
 
@@ -433,7 +438,7 @@ class ImportTools:
         for col in relevant_cols:
             col = col + i
             self.ws.insert_cols(col)
-            self.ws.cell(row=3, column=col, value=tab + '_id')
+            self.ws.cell(row=3, column=col, value='{}_id'.format(tab.lower()))
 
             for row in range(4, self.ws.max_row + 1):
                 value = self.ws.cell(row=row, column=(col + 1)).value
@@ -487,9 +492,9 @@ class ImportTools:
         max_id = self.cursor.execute(max_query).fetchone()[0]
         working_sheet = self.data_file['Site']
         self._set_identity_insert('GeographicSite')
-        for row in range(2, working_sheet.max_row):
+        for row in range(2, working_sheet.max_row + 1):
             data = {working_sheet[1][col].value: working_sheet[row][col].value
-                    for col in range(1, working_sheet.max_column + 1) 
+                    for col in range(1, working_sheet.max_column) 
                     if working_sheet[row][col].value is not None}
 
             max_id += 1
@@ -521,9 +526,9 @@ class ImportTools:
         max_id = self.cursor.execute(max_query).fetchone()[0]
         working_sheet = self.data_file['Event']
         self._set_identity_insert('CollectionEvent')
-        for row in range(2, working_sheet.max_row):
+        for row in range(2, working_sheet.max_row + 1):
             data = {working_sheet[1][col].value: working_sheet[row][col].value
-                    for col in range(1, working_sheet.max_column + 1) 
+                    for col in range(1, working_sheet.max_column) 
                     if working_sheet[row][col].value is not None}
 
             max_id += 1
@@ -541,15 +546,15 @@ class ImportTools:
             item = data["Event Number"]
             pub.sendMessage('UpdateMessage', arg1="{} written to db".format(item))
             self.cursor.execute(query)
-        self._set_identity_insert('GeographicSite')
+        self._set_identity_insert('CollectionEvent')
         return 0
 
     def _import_site_event(self):
         site_event = []
         for row in range(4, self.ws.max_row + 1):
-            site = self.ws[row][52]
-            event = self.ws[row][14]
-            site_event.append(self.query_site_event(site, event))
+            site = self.ws[row][51].value
+            event = self.ws[row][13].value
+            site_event.append(self._query_site_event((site, event)))
         query = '''Insert into GeographicSite_CollectionEvent(geo_site_id, coll_event_id)
                     Values ({0}, {1})'''
         site_event = set(site_event)
@@ -564,8 +569,8 @@ class ImportTools:
 
         site_query = "Select geo_site_id from GeographicSite where collector_site_id = '{}'"
         event_query = "Select coll_event_id from CollectionEvent where event_num = '{}'"
-        site = self.cursor.execute(site_query.format(site))
-        event = self.cursor.execute(event_query.format(event))
+        site = self.cursor.execute(site_query.format(site)).fetchone()[0]
+        event = self.cursor.execute(event_query.format(event)).fetchone()[0]
 
         return site, event
 
@@ -573,20 +578,25 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', arg1="Writing Specimens",
                         arg2=1,
                         arg3=self.ws.max_row)
+        max_query = "Select Max(item_id) from Item"
+        max_id = self.cursor.execute(max_query).fetchone()[0]
         for row in range(4, self.ws.max_row + 1):
+            max_id += 1
             data_row = self.ws[row]
-            max_query = "Select Max(item_id) from Item"
-            max_id = self.cursor.execute(max_query).fetchone()[0] + 1 
-
+            insert_keys = 'item_id, '
             for process in ['item', 'nhitem', 'disc_item', 'preparation', 'taxonomy', 'persons']:
                 if process == 'item':
                     values = self._prep_item(data_row)
-                    query_part_1 = "Insert into Item ('item_id, {}')".format(', '.join(list(values.keys())))
-
+                    insert_keys += 'status_cd, area_cd, '
+                    insert_keys += ', '.join([keys[item].split('.')[1] for item in values.keys()])
+                    query_part_1 = "Insert into Item (item_id, {})".format(insert_keys)
+                    query_part_2 = "VALUES({0}, 'catalog', {1}"(max_id, self.area_cd)
                 elif process == 'nhitem':
                     values = self._prep_nhitem(data_row)
-                    query_part_1 = "Insert into NaturalHistoryItem('item_id, {}')".format(
-                                                                                        ', '.join(list(values.keys())))
+                    insert_keys += 'discipline_cd, '
+                    insert_keys += ', '.join([keys[item].split('.')[1] for item in values.keys()])
+                    query_part_1 = "Insert into NaturalHistoryItem('item_id, {}')".format(insert_keys)
+                    query_part_2 = "VALUES({0}, {1}"(max_id, self.discipline)
                 elif process == 'disc_item':
                     values = self._prep_discipline_item(data_row)
                     query_part_1 = "Insert into {0}('{1}')".format(self._get_full_disc(),
@@ -601,7 +611,8 @@ class ImportTools:
 
                 elif process == 'persons':
                     self._prep_persons()
-                query_part_2 = "Values({}".format(max_id)
+                    continue
+
                 for datum in values.keys():
                     if isinstance(values[datum], str):
                         value = "'{}'".format(values[datum])
@@ -620,24 +631,34 @@ class ImportTools:
         return item
 
     def _prep_nhitem(self, row):
-        stuff = 'stuff'
-        print(stuff)
-        return stuff
+        relevant_cols = self._find_relevant_column('NHItem')
+        nhitem = {self.ws[3][col].value[6:]: row[col].value 
+                for col in relevant_cols}        
+        return hnitem
 
     def _prep_discipline_item(self, row):
-        stuff = 'stuff'
-        print(stuff)
-        return stuff
+        relevant_cols = self._find_relevant_column('DisciplineItem')
+        disc_item = {self.ws[3][col].value[6:]: row[col].value 
+                for col in relevant_cols}        
+        return disc_item
 
     def _prep_preparation(self, row):
-        stuff = 'stuff'
-        print(stuff)
-        return stuff
+        relevant_cols = self._find_relevant_column('Preparation')
+        item = {self.ws[3][col].value[6:]: row[col].value 
+                for col in relevant_cols}        
+        return item
 
     def _prep_taxon(self, row):
-        taxon = []
-        print('stuff')
+        relevant_cols = self._find_relevant_column('ImportTaxon')
+        taxon = {self.ws[3][col].value[6:]: row[col].value 
+                for col in relevant_cols}        
         return taxon
+
+    def _prep_chemical_treatment(self, row):
+        print('stuff')
+
+    def _prep_field_measurement(self, row):
+        print('stuff')
 
     def _prep_persons(self, row):
         persons = []
@@ -674,6 +695,8 @@ class ImportTools:
         self._set_triggers()
         self._import_site()
         self._import_event()
+        self.cursor.commit()
+        self._import_site_event()
         pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
                         arg2=1, arg3=1)
         self._set_triggers()

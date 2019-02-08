@@ -179,7 +179,7 @@ class ToolsWindow(wx.Frame):
         processes = ['Write GeographicSites and Collection Events',
                      'Write Specimen, Person and Taxonomy Data',
                      'Full Import']
-        process_dlg = wx.SingleChoicDialog(self, 'Choose the process you wish to perform',
+        process_dlg = wx.SingleChoiceDialog(self, 'Choose the process you wish to perform',
                                            'Process Chooser', processes, wx.CHOICEDLG_STYLE)
         if process_dlg.ShowModal() == wx.ID_OK:
             process = process_dlg.GetStringSelection()
