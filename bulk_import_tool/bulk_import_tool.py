@@ -655,14 +655,20 @@ class ImportTools:
         return taxon
 
     def _prep_chemical_treatment(self, row):
-        print('stuff')
+        relevant_cols = self._find_relevant_column('ChemicalTreatment')
+        taxon = {self.ws[3][col].value[6:]: row[col].value 
+                for col in relevant_cols}       
 
     def _prep_field_measurement(self, row):
-        print('stuff')
+        relevant_cols = self._find_relevant_column('FieldMeasurement')
+        taxon = {self.ws[3][col].value[6:]: row[col].value 
+                for col in relevant_cols}       
 
     def _prep_persons(self, row):
-        persons = []
-        print('stuff')
+        relevant_cols = self._find_relevant_column('')
+        taxon = {self.ws[3][col].value[6:]: row[col].value 
+                for col in relevant_cols}       
+        
         return persons
 
     def _set_identity_insert(self, table):
