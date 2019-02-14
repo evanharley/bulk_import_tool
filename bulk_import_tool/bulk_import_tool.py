@@ -124,8 +124,6 @@ class ImportTools:
         elif method == 'DisciplineItem':
             disc = self._get_full_disc()
             table_id = ['[DISCIPLINE].', disc + 'Item.']
-        elif method == 'ImptPerson':
-            table_id = ['Person.person_id']
         elif method == 'ImptTaxon':
             table_id = ['Taxonomy.', 'taxon_id']
         elif method == 'Preparation':
@@ -224,6 +222,8 @@ class ImportTools:
         return generated_sites
 
     def _get_max_site_id(self):
+        # Queries the database for the highest collector_site_id for the discipline selected
+        # returns the discipline specific prefix and the site_id
         prefix_query = "Select geo_site_prefix from NHDisciplineType where discipline_cd = '{}'".format(self.discipline)
         prefix = self.cursor.execute(prefix_query).fetchall()[0][0]
         query = "Select max(convert(int, SUBSTRING(collector_site_id, 3, 100))) from GeographicSite " + \
@@ -233,6 +233,8 @@ class ImportTools:
         return max_site_id
 
     def _get_max_event_id(self):
+        # Queries the database for the highest event_num for the discipline selected
+        # returns the discipline specific prefix and the event_num
         prefix_query = "Select coll_event_prefix from NHDisciplineType where discipline_cd = " +\
                                 "'{}'".format(self.discipline)
         prefix = self.cursor.execute(prefix_query).fetchall()[0][0]
@@ -282,6 +284,7 @@ class ImportTools:
         return generated_events
 
     def _write_persontaxa(self, data, section):
+        # Writes persons and taxa to spreadsheet
         row = 1
         col = 'A'
         work_sheet = self.data_file[section]
@@ -300,6 +303,7 @@ class ImportTools:
         return 0
 
     def _write_siteevent(self, data, section):
+        # Writes sites and events to spreadsheet
         row = 1
         col = 1
         worksheet = self.data_file[section]
@@ -359,6 +363,7 @@ class ImportTools:
         return 0 
 
     def _test_spreadsheet(self):
+        # Sanity check for the spreadsheet (not a part of normal operation)
         key_row = self.ws[3]
         test_results = {}
         disciplines = {
@@ -387,12 +392,16 @@ class ImportTools:
         return test_results
     
     def _check_sheets(self):
+        # Helper method for the test_spreadsheet method
+        # Checks that the required sheets are there
         if set(self.data_file.sheetnames) == ('IMM_template', 'Person', 'Taxon', 'Site', 'Event'):
             return True
         else:
             return False
 
     def _check_persontaxa(self):
+        # Helper method for the test_spreadsheet method
+        # Checks that persons and taxa look as they should
         for sheet in ['Person', 'Taxon']:
             workingsheet = self.data_file[sheet]
             if workingsheet.max_column > 2:
@@ -403,6 +412,7 @@ class ImportTools:
         return 0, 'Complete'
 
     def _add_ids(self):
+        # Adds the relevant ids to the spreadsheet for later writing to the database
         if not self._check_sheets:
             return 1, 'This is the wrong spreadsheet'
         if not self._check_persontaxa:
@@ -431,6 +441,7 @@ class ImportTools:
         return 0, 'Done'
 
     def _handle_persontaxa(self, data):
+        # Specific logic for writing person_ids and taxon_ids to the spreadsheet
         tab = list(data.keys())[0]
         data = data[tab]
         relevant_cols = self._find_relevant_column(tab)
@@ -458,6 +469,7 @@ class ImportTools:
         return 0
 
     def _handle_siteevent(self, data):
+        # Specific logic for handling writing site and event ids etc to the spreadsheet
         tab = list(data.keys())[0]
         data = data[tab]
         tab = tab + 's'
@@ -482,6 +494,8 @@ class ImportTools:
         return 0, 'Database connection changed to Test'
 
     def _import_site(self):
+        # Logic for importing site data to the database
+        # pub methods are for updating the progress bar
         pub.sendMessage('UpdateMessage', arg1="Writing Sites",
                         arg2=1,
                         arg3=self.data_file['Site'].max_row)
@@ -516,6 +530,7 @@ class ImportTools:
         return 0
 
     def _import_event(self):
+        # Specific logic for importing event data into the database
         pub.sendMessage('UpdateMessage', arg1="Writing Events",
                         arg2=1,
                         arg3=self.data_file['Event'].max_row)
@@ -550,6 +565,7 @@ class ImportTools:
         return 0
 
     def _import_site_event(self):
+        # Specific logic for importing the linkage between sites and events
         site_event = []
         for row in range(4, self.ws.max_row + 1):
             site = self.ws[row][51].value
@@ -564,6 +580,7 @@ class ImportTools:
         return 0
 
     def _query_site_event(self, site_event: tuple):
+        # Gets datbase ids for sites and events
         site = site_event[0]
         event = site_event[1]
 
@@ -575,6 +592,9 @@ class ImportTools:
         return site, event
 
     def _import_specimen(self):
+        # Main method for importing all data which hinges on the item_id
+        # This includes all of the item tables (item, naturalhistoryitem, [discipline]item)
+        # as well as taxonomy, preparation, collector, determinavit, etc. 
         pub.sendMessage('UpdateMessage', arg1="Writing Specimens",
                         arg2=1,
                         arg3=self.ws.max_row)
@@ -588,29 +608,32 @@ class ImportTools:
                 if process == 'item':
                     values = self._prep_item(data_row)
                     insert_keys += 'status_cd, area_cd, '
-                    insert_keys += ', '.join([keys[item].split('.')[1] for item in values.keys()])
-                    query_part_1 = "Insert into Item (item_id, {})".format(insert_keys)
+                    insert_keys += ', '.join([item.split('.')[1] for item in values.keys()])
+                    query_part_1 = "Insert into Item ({})".format(insert_keys)
                     query_part_2 = "VALUES({0}, 'catalog', {1}"(max_id, self.area_cd)
                 elif process == 'nhitem':
                     values = self._prep_nhitem(data_row)
                     insert_keys += 'discipline_cd, '
-                    insert_keys += ', '.join([keys[item].split('.')[1] for item in values.keys()])
-                    query_part_1 = "Insert into NaturalHistoryItem('item_id, {}')".format(insert_keys)
+                    insert_keys += ', '.join([item.split('.')[1] for item in values.keys()])
+                    query_part_1 = "Insert into NaturalHistoryItem({})".format(insert_keys)
                     query_part_2 = "VALUES({0}, {1}"(max_id, self.discipline)
                 elif process == 'disc_item':
                     values = self._prep_discipline_item(data_row)
-                    query_part_1 = "Insert into {0}('{1}')".format(self._get_full_disc(),
-                                                                   ', '.join(list(values.keys())))
+                    insert_keys += ', '.join([item.split('.')[1] for item in values.keys()]) 
+                    query_part_1 = "Insert into {0}({1})".format(self._get_full_disc(), insert_keys)
                 elif process == 'preparation':
                     values = self._prep_preparation(data_row)
+                    insert_keys += ', '.join([item.split('.')[1] for item in values.keys()])
                     query_part_1 = "Insert into Preparation('{}')".format(', '.join(list(values.keys())))
 
                 elif process == 'taxonomy':
                     values = self._prep_taxon(data_row)
+                    insert_keys += ', '.join([item.split('.')[1] for item in values.keys()])
                     query_part_1 = "Insert into Taxonomy('{}')".format(', '.join(list(values.keys())))
 
                 elif process == 'persons':
-                    self._prep_persons()
+                    values = self._prep_persons()
+                    self.import_persons(values, max_id)
                     continue
 
                 for datum in values.keys():
@@ -625,53 +648,91 @@ class ImportTools:
         return 0
 
     def _prep_item(self, row):
+        # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('Item')
         item = {self.ws[3][col].value[6:]: row[col].value 
                 for col in relevant_cols}        
         return item
 
     def _prep_nhitem(self, row):
+        # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('NHItem')
         nhitem = {self.ws[3][col].value[6:]: row[col].value 
                 for col in relevant_cols}        
         return hnitem
 
     def _prep_discipline_item(self, row):
+        # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('DisciplineItem')
         disc_item = {self.ws[3][col].value[6:]: row[col].value 
                 for col in relevant_cols}        
         return disc_item
 
     def _prep_preparation(self, row):
+        # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('Preparation')
         item = {self.ws[3][col].value[6:]: row[col].value 
                 for col in relevant_cols}        
         return item
 
     def _prep_taxon(self, row):
+        # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('ImportTaxon')
         taxon = {self.ws[3][col].value[6:]: row[col].value 
                 for col in relevant_cols}        
         return taxon
 
     def _prep_chemical_treatment(self, row):
+        # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('ChemicalTreatment')
         taxon = {self.ws[3][col].value[6:]: row[col].value 
                 for col in relevant_cols}       
 
     def _prep_field_measurement(self, row):
+        # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('FieldMeasurement')
         taxon = {self.ws[3][col].value[6:]: row[col].value 
                 for col in relevant_cols}       
 
     def _prep_persons(self, row):
-        relevant_cols = self._find_relevant_column('')
-        taxon = {self.ws[3][col].value[6:]: row[col].value 
-                for col in relevant_cols}       
+        # Helper method for the specimen import method
+        relevant_cols = self._find_relevant_column('Person')
+        persons = {}
+        for i in range(len(relevant_cols)):
+            col = relevant_cols[i]
+            if i == 0:
+                key = 'Collector.'
+            elif i == 1:
+                key = 'Determinavit.'
+            else:
+                key = 'Preparator.'
+            key += self.ws[3][col].value
+            persons[key] = row[col - 1].value
         
         return persons
 
+    def _import_person(self, values, item_id):
+        # Helper method for the specimen import method
+        # imports person data (collector, determinavit, preparator)
+        for key in values.keys():
+            table = key[:keyield.find('.')]
+            fields = 'item_id, {}, seq_num'.format(table.lower + '_pid')
+            query_part_1 = 'Insert into {0}({1})'.format(table, fields)
+
+            if ';' in values[key]:
+                i = 0
+                for value in values[key].split(';').strip():
+                    stuff = '{0}, {1}, {3}'.format(item_id, i, value)
+                    query_part_2 = 'Values({})'
+                    query = '{0}\n{1}'.format(query_part_1, query_part_2)
+                    self.cursor.execute(query)
+            else:
+                stuff = '{0}, {1}, {3}'.format(item_id, 0, values[key])
+                query_part_2 = 'Values ({})'.format(stuff)
+                query = '{0}\n{1}'.format(query_part_1, query_part_2)
+        return 0 
     def _set_identity_insert(self, table):
+        # Allows/Disallows the inserting into the data tables
         if self.write_status[table] is False:
             query = 'set identity_insert {} on;'.format(table)
         else:
@@ -681,6 +742,7 @@ class ImportTools:
         return 0
 
     def _set_triggers(self):
+        # Enables/Disables all triggers on the database
         if self.write_status['Triggers'] is False:
             status = 'DISABLE'
         else:
@@ -696,6 +758,7 @@ class ImportTools:
         self.cursor.execute(query)
 
     def write_siteevent_to_db(self):
+        # Method to write just site and event data to the database (step 1 for some disciplines)
         pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
                         arg2=1, arg3=1)
         self._set_triggers()
@@ -711,6 +774,7 @@ class ImportTools:
         self.proc_log.append('Import GeographicSite and CollectionEvent')
 
     def write_specimen_taxa_persons_to_db(self):
+        # Method to write just specimen related data to the database (setp 2 for the above disciplines)
         pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
                         arg2=1, arg3=1)
         self._set_triggers()
