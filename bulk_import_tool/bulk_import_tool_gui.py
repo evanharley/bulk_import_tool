@@ -129,6 +129,10 @@ class ToolsWindow(wx.Frame):
 
     def set_discipline(self, event):  # wxGlade: tools_window.<event_handler>
         self.impt.discipline = self.choice_1.StringSelection[:3].lower()
+        if self.impt.discipline in ['bot', 'ent', 'geo', 'her', 'ich', 'inv', 'mam', 'orn', 'pal']:
+            self.impt.area_cd = 'natural'
+        else:
+            self.impt.area_cd = 'human'
         event.Skip()
 
     def write_spreadsheet(self, event):

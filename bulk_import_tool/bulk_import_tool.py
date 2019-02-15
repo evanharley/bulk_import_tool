@@ -13,14 +13,13 @@ class ImportTools:
         # so when coding GUI it should be included
         self.data_filename = ''
         self.discipline = ''
-        if self.discipline in ['bot', 'ent', 'geo', 'her', 'ich', 'inv', 'mam', 'orn', 'pal']:
-            self.area_cd = 'natural'
-        else:
-            self.area_cd = 'human'
+        self.area_cd = ''
         self._connection = pyodbc.connect('DSN=ImportTest; Trusted_Connection=yes;')
         self.cursor = self._connection.cursor()
         self.data_file = None
         self.ws = None
+        self.keys = None
+        self.max_id = self._query_item_id()
         self.write_status = {'GeographicSite': False, 
                              'CollectionEvent': False,
                              'Taxonomy': False,
@@ -34,6 +33,7 @@ class ImportTools:
         except FileNotFoundError:
             return None
         self.ws = self.data_file['IMM_template']
+        self.keys = self.ws[3]
 
     def _write_prog(self):
         prog_log = open('prog_log.log', 'a')
@@ -104,7 +104,6 @@ class ImportTools:
     def _find_relevant_column(self, method):
         # Return the index of the columns relevant to the _find methods above.
         # Values in a list of indices
-        header_row = self.ws[3]
         relevant_cols = []
         table_id = ''
         if method == 'Person':
@@ -131,8 +130,8 @@ class ImportTools:
         elif method == 'ChemicalTreatment':
             table_id = ['ChemicalTreatment.']
 
-        for col in range(1, len(header_row)):
-            if any(header_row[col].value.startswith(id) for id in table_id) \
+        for col in range(0, len(self.keys)):
+            if any(self.keys[col].value.startswith(id) for id in table_id) \
                     and col not in relevant_cols:
                 relevant_cols.append(col)
 
@@ -188,7 +187,7 @@ class ImportTools:
         # Generates new sites for import, from unique sites in the import spreasheet
         new_site_id = self._get_max_site_id()
         relevant_cols = self._find_relevant_column('Sites')
-        key_row = self.ws[2]
+        self.keys = self.ws[2]
         generated_sites = {}
         for row in range(4, self.ws.max_row + 1):
             new_site_id[1] = str(int(new_site_id[1]) + 1)
@@ -196,14 +195,14 @@ class ImportTools:
             if generated_sites == {}:
                 generated_sites[site_id] = {}
                 for index in relevant_cols:
-                    generated_sites[site_id][key_row[index].value] = self.ws[row][index].value
+                    generated_sites[site_id][self.keys[index].value] = self.ws[row][index].value
                 generated_sites[site_id]["Collector's Site ID"] = site_id
                 self.ws.cell(row=row, column=51, value=site_id)
             else:
                 site = {}
                 difference = 0
                 for index in relevant_cols:
-                    site[key_row[index].value] = self.ws[row][index].value
+                    site[self.keys[index].value] = self.ws[row][index].value
                 for item in generated_sites.keys():
                     diff = {key: site[key] for key in generated_sites[item] 
                             if key != "Collector's Site ID" and site[key] != generated_sites[item][key]}
@@ -249,7 +248,7 @@ class ImportTools:
         generated_events = {}
         new_event_id = self._get_max_event_id()
         relevant_cols = self._find_relevant_column('Events')
-        key_row = self.ws[2]
+        self.keys = self.ws[2]
         for row in range(4, self.ws.max_row + 1):
             new_event_id[1] = str(int(new_event_id[1]) + 1)
             event_id = new_event_id[0] + new_event_id[1]
@@ -257,14 +256,14 @@ class ImportTools:
             if generated_events == {}:
                 generated_events[event_id] = {}
                 for index in relevant_cols:
-                    generated_events[event_id][key_row[index].value] = working_row[index].value
+                    generated_events[event_id][self.keys[index].value] = working_row[index].value
                 generated_events[event_id]["Event Number"] = event_id
                 self.ws.cell(row=row, column=14, value=event_id)
             else:
                 event = {}
                 difference = 0
                 for index in relevant_cols:
-                    event[key_row[index].value] = working_row[index].value
+                    event[self.keys[index].value] = working_row[index].value
                 for item in generated_events.keys():
                     diff = {key: event[key] for key in generated_events[item] 
                             if key != "Event Number" and event[key] != generated_events[item][key]}
@@ -364,7 +363,6 @@ class ImportTools:
 
     def _test_spreadsheet(self):
         # Sanity check for the spreadsheet (not a part of normal operation)
-        key_row = self.ws[3]
         test_results = {}
         disciplines = {
             'bot': 'Botany',
@@ -377,7 +375,7 @@ class ImportTools:
             'orn': 'Ornithology',
             'pal': 'Paleontology'
             }
-        for key in key_row:
+        for key in self.keys:
             value = key.value
             query_table = '[' + value[:value.find('.')] + ']'
             query_field = '[' + value[value.find('.') + 1:] + ']'
@@ -500,7 +498,7 @@ class ImportTools:
                         arg2=1,
                         arg3=self.data_file['Site'].max_row)
         relevant_cols = self._find_relevant_column('Sites')
-        keys = {self.ws[2][col].value: self.ws[3][col].value 
+        keys = {self.ws[2][col].value: self.keys[col].value 
                 for col in relevant_cols}
         max_query = "Select Max(geo_site_id) from GeographicSite"
         max_id = self.cursor.execute(max_query).fetchone()[0]
@@ -535,7 +533,7 @@ class ImportTools:
                         arg2=1,
                         arg3=self.data_file['Event'].max_row)
         relevant_cols = self._find_relevant_column('Events')
-        keys = {self.ws[2][col].value: self.ws[3][col].value 
+        keys = {self.ws[2][col].value: self.keys[col].value 
                 for col in relevant_cols}
         max_query = "Select Max(coll_event_id) from CollectionEvent"
         max_id = self.cursor.execute(max_query).fetchone()[0]
@@ -598,138 +596,188 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', arg1="Writing Specimens",
                         arg2=1,
                         arg3=self.ws.max_row)
-        max_query = "Select Max(item_id) from Item"
-        max_id = self.cursor.execute(max_query).fetchone()[0]
         for row in range(4, self.ws.max_row + 1):
-            max_id += 1
-            data_row = self.ws[row]
-            insert_keys = 'item_id, '
-            for process in ['item', 'nhitem', 'disc_item', 'preparation', 'taxonomy', 'persons']:
-                if process == 'item':
-                    values = self._prep_item(data_row)
-                    insert_keys += 'status_cd, area_cd, '
-                    insert_keys += ', '.join([item.split('.')[1] for item in values.keys()])
-                    query_part_1 = "Insert into Item ({})".format(insert_keys)
-                    query_part_2 = "VALUES({0}, 'catalog', {1}"(max_id, self.area_cd)
-                elif process == 'nhitem':
-                    values = self._prep_nhitem(data_row)
-                    insert_keys += 'discipline_cd, '
-                    insert_keys += ', '.join([item.split('.')[1] for item in values.keys()])
-                    query_part_1 = "Insert into NaturalHistoryItem({})".format(insert_keys)
-                    query_part_2 = "VALUES({0}, {1}"(max_id, self.discipline)
-                elif process == 'disc_item':
-                    values = self._prep_discipline_item(data_row)
-                    insert_keys += ', '.join([item.split('.')[1] for item in values.keys()]) 
-                    query_part_1 = "Insert into {0}({1})".format(self._get_full_disc(), insert_keys)
-                elif process == 'preparation':
-                    values = self._prep_preparation(data_row)
-                    insert_keys += ', '.join([item.split('.')[1] for item in values.keys()])
-                    query_part_1 = "Insert into Preparation('{}')".format(', '.join(list(values.keys())))
-
-                elif process == 'taxonomy':
-                    values = self._prep_taxon(data_row)
-                    insert_keys += ', '.join([item.split('.')[1] for item in values.keys()])
-                    query_part_1 = "Insert into Taxonomy('{}')".format(', '.join(list(values.keys())))
-
-                elif process == 'persons':
-                    values = self._prep_persons()
-                    self.import_persons(values, max_id)
+            self.max_id += 1
+            processes = {'item': self._write_item_query,
+                         'nhitem': self._write_nhitem_query,
+                         'disc_item': self._write_discipline_item_query,
+                         'preparation': self._write_preparation_query,
+                         'taxonomy': self._write_taxon_query,
+                         'persons': self._prep_persons,
+                         'ChemTreat': self._write_chem_query,
+                         'FieldMeas': self._write_field_query
+                         }
+            for process in ['item', 'nhitem', 'disc_item', 'preparation', 'ChemTreat','taxonomy']:
+                query_part_1, query_part_2, values = processes[process](row)
+                if values == {}:
                     continue
-
                 for datum in values.keys():
                     if isinstance(values[datum], str):
                         value = "'{}'".format(values[datum])
                     else:
                         value = values[datum]
                     query_part_2 += ", {}".format(value)
-                query = query_part_1 + '/n' + query_part_2 + ')'
+                query = query_part_1 + '\n' + query_part_2 + ')'
                 self.cursor.execute(query)
+            self._import_person(row)
             pub.sendMessage('UpdateMessage', arg1='{} written to database'.format(max_id))
         return 0
+
+    def _query_item_id(self):
+        max_query = "Select Max(item_id) from Item"
+        max_id = self.cursor.execute(max_query).fetchone()[0]
+        return max_id
 
     def _prep_item(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('Item')
-        item = {self.ws[3][col].value[6:]: row[col].value 
-                for col in relevant_cols}        
+        item = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+                for col in relevant_cols if row[col].value is not None}
         return item
+    def _write_item_query(self, row_num):
+        data_row = self.ws[row_num]
+        insert_keys = 'item_id, status_cd, area_cd, '
+        values = self._prep_item(data_row)
+        insert_keys += ', '.join([item for item in values.keys()])
+        query_part_1 = "Insert into Item ({})".format(insert_keys)
+        query_part_2 = "VALUES({0}, 'catalog', '{1}'".format(self.max_id, self.area_cd)
+        return query_part_1, query_part_2, values
 
     def _prep_nhitem(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('NHItem')
-        nhitem = {self.ws[3][col].value[6:]: row[col].value 
-                for col in relevant_cols}        
-        return hnitem
+        nhitem = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+                for col in relevant_cols if row[col].value is not None}
+        site, event = self._query_site_event((row[51].value, row[13].value))
+        nhitem['coll_event_id'] = event
+        nhitem['geo_site_id'] = site
+        return nhitem
+
+    def _write_nhitem_query(self, row_num):
+        data_row = self.ws[row_num]
+        insert_keys = 'item_id, discipline_cd, '
+        values = self._prep_nhitem(data_row)
+        insert_keys += ', '.join([item for item in values.keys()])
+        query_part_1 = "Insert into NaturalHistoryItem({})".format(insert_keys)
+        query_part_2 = "VALUES({0}, '{1}'".format(self.max_id, self.discipline)
+        return query_part_1, query_part_2, values
 
     def _prep_discipline_item(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('DisciplineItem')
-        disc_item = {self.ws[3][col].value[6:]: row[col].value 
-                for col in relevant_cols}        
+        disc_item = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+                for col in relevant_cols if row[col].value is not None}
         return disc_item
+
+    def _write_discipline_item_query(self, row_num):
+        data_row = self.ws[row_num]
+        insert_keys = 'item_id, '
+        values = self._prep_discipline_item(data_row)
+        insert_keys += ', '.join([item for item in values.keys()]) 
+        query_part_1 = "Insert into {0}Item({1})".format(self._get_full_disc(), insert_keys)
+        query_part_2 = "VALUES({0}".format(self.max_id)
+        return query_part_1, query_part_2, values
 
     def _prep_preparation(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('Preparation')
-        item = {self.ws[3][col].value[6:]: row[col].value 
-                for col in relevant_cols}        
+        item = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+                for col in relevant_cols if row[col].value is not None}
         return item
+
+    def _write_preparation_query(self, row_num):
+        data_row = self.ws[row_num]
+        insert_keys = 'item_id, '
+        values = self._prep_preparation(data_row)
+        insert_keys += ', '.join([item for item in values.keys()])
+        query_part_1 = "Insert into Preparation('{}')".format(insert_keys)
+        query_part_2 = "VALUES({0}".format(self.max_id)
+        return query_part_1, query_part_2, values
 
     def _prep_taxon(self, row):
         # Helper method for the specimen import method
-        relevant_cols = self._find_relevant_column('ImportTaxon')
-        taxon = {self.ws[3][col].value[6:]: row[col].value 
-                for col in relevant_cols}        
+        relevant_cols = self._find_relevant_column('ImptTaxon')
+        taxon = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+                for col in relevant_cols if row[col].value is not None}
         return taxon
 
+    def _write_taxon_query(self, row_num):
+        data_row = self.ws[row_num]
+        insert_keys = 'item_id, accepted, cf, aff, '
+        values = self._prep_taxon(data_row)
+        insert_keys += ', '.join([item for item in values.keys()])
+        query_part_1 = "Insert into Taxonomy({})".format(insert_keys)
+        query_part_2 = "VALUES({0}, 1, 0, 0".format( self.max_id)
+        return query_part_1, query_part_2, values
+
     def _prep_chemical_treatment(self, row):
+
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('ChemicalTreatment')
-        taxon = {self.ws[3][col].value[6:]: row[col].value 
-                for col in relevant_cols}       
+        chemical_treatment = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+                for col in relevant_cols if row[col].value is not None}
+        return chemical_treatment
+
+    def _write_chem_query(self, row_num):
+        data_row = self.ws[row_num]
+        insert_keys = 'item_id, seq_num, '
+        values = self._prep_chemical_treatment(data_row)
+        insert_keys += ', '.join([item for item in values.keys()])
+        query_part_1 = "Insert into ChemicalTreatment('{}')".format(insert_keys)
+        query_part_2 = "VALUES({0}, 0, ".format(self.max_id)
+
+        return query_part_1, query_part_2, values
 
     def _prep_field_measurement(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('FieldMeasurement')
-        taxon = {self.ws[3][col].value[6:]: row[col].value 
-                for col in relevant_cols}       
+        field_measurement = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+                for col in relevant_cols if row[col].value is not None}
+        return field_measurement
+
+    def _write_field_query(self, row_num):
+        data_row = self.ws[row_num]
+        insert_keys = 'item_id, seq_num, '
+        values = self._prep_field_measurement(data_row)
+        insert_keys += ', '.join([item for item in values.keys()])
+        query_part_1 = "Insert into FieldMeasurement('{}')".format(insert_keys)
+        query_part_2 = "VALUES({0}".format(self.max_id)
+
+        return query_part_1, query_part_2, values
 
     def _prep_persons(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('Person')
-        persons = {}
-        for i in range(len(relevant_cols)):
-            col = relevant_cols[i]
-            if i == 0:
-                key = 'Collector.'
-            elif i == 1:
-                key = 'Determinavit.'
-            else:
-                key = 'Preparator.'
-            key += self.ws[3][col].value
-            persons[key] = row[col - 1].value
+        col_names = {25: 'collector',
+                81: 'determinavit',
+                123: 'preparator'}
+        persons = {'collector': {},
+                   'determinavit': {},
+                   'preparator': {}}
+        for col_num in col_names.keys():
+            key = col_names[col_num]
+            if ';' in row[col_num - 1].value:
+                print('HEY YOU NEED TO WRITE THIS')
+
         
         return persons
 
-    def _import_person(self, values, item_id):
+    def _query_taxonomy(self):
+        query = "select taxonomy_id from Taxonomy where item_id = {0}".format(self.max_id)
+        value = self.cursor.execute(query).fetchone()[0]
+        return value
+
+    def _import_person(self, row_num):
         # Helper method for the specimen import method
         # imports person data (collector, determinavit, preparator)
-        for key in values.keys():
-            table = key[:keyield.find('.')]
-            fields = 'item_id, {}, seq_num'.format(table.lower + '_pid')
+        data_row = self.ws[row_num]
+        values = self._prep_persons(data_row)
+        for table in values.keys():
+            keys = ', '.join([thing for thing in values[table].keys()])
+            fields = 'item_id, {0}, seq_num'.format(keys)
             query_part_1 = 'Insert into {0}({1})'.format(table, fields)
+            query_part_2 = "Values({}".format
 
-            if ';' in values[key]:
-                i = 0
-                for value in values[key].split(';').strip():
-                    stuff = '{0}, {1}, {3}'.format(item_id, i, value)
-                    query_part_2 = 'Values({})'
-                    query = '{0}\n{1}'.format(query_part_1, query_part_2)
-                    self.cursor.execute(query)
-            else:
-                stuff = '{0}, {1}, {3}'.format(item_id, 0, values[key])
-                query_part_2 = 'Values ({})'.format(stuff)
-                query = '{0}\n{1}'.format(query_part_1, query_part_2)
         return 0 
     def _set_identity_insert(self, table):
         # Allows/Disallows the inserting into the data tables
