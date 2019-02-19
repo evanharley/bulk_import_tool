@@ -197,6 +197,7 @@ class ToolsWindow(wx.Frame):
         elif process == 'Write Specimen, Person and Taxonomy Data':
             self.impt.write_specimen_taxa_persons_to_db()
         self.impt._write_prog()
+        self.impt._get_prog_info()
         event.Skip()
 
 

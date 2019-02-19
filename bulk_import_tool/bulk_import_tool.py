@@ -68,8 +68,7 @@ class ImportTools:
                         names.extend(name)
                     else:
                         names.append(name)
-                else:
-                    continue
+
         for i in range(len(names)):
             if ',' in names[i]:
                 name = [thing.strip() for thing in names[i].split(',')]
@@ -105,30 +104,20 @@ class ImportTools:
         # Return the index of the columns relevant to the _find methods above.
         # Values in a list of indices
         relevant_cols = []
-        table_id = ''
-        if method == 'Person':
-            table_id = ['Person.search_name']
-        elif method == 'Taxon':
-            table_id = ['Taxon.term']
-        elif method == 'Events':
-            table_id = ['CollectionEvent.']
-        elif method == 'Sites':
-            table_id = ['GeographicSite.', 'GeoSiteNote']
-        elif method == 'Item':
-            table_id = ['Item']
-        elif method == 'NHItem':
-            table_id = ['NaturalHistoryItem.']
-        elif method == 'FieldMeasurement':
-            table_id = ['FieldMeasurement.']
-        elif method == 'DisciplineItem':
-            disc = self._get_full_disc()
-            table_id = ['[DISCIPLINE].', disc + 'Item.']
-        elif method == 'ImptTaxon':
-            table_id = ['Taxonomy.', 'taxon_id']
-        elif method == 'Preparation':
-            table_id = ['Preparation.']
-        elif method == 'ChemicalTreatment':
-            table_id = ['ChemicalTreatment.']
+        disc = self._get_full_disc()
+        table_ids = {'Person': ['Person.search_name'],
+                     'Taxon': ['Taxon.term'],
+                     'Events': ['CollectionEvent.'],
+                     'Sites': ['GeographicSite.', 'GeoSiteNote'],
+                     'Item': ['Item'],
+                     'NHItem': ['NaturalHistoryItem.'],
+                     'FieldMeasurement': ['FieldMeasurement.'],
+                     'DisciplineItem': ['[DISCIPLINE].', disc + 'Item.'],
+                     'ImptTaxon': ['Taxonomy.', 'taxon_id'],
+                     'Preparation': ['Preparation.'],
+                     'ChemicalTreatment': ['ChemicalTreatment.']}
+        table_id = table_ids[method]
+
 
         for col in range(0, len(self.keys)):
             if any(self.keys[col].value.startswith(id) for id in table_id) \
@@ -618,9 +607,12 @@ class ImportTools:
                         value = values[datum]
                     query_part_2 += ", {}".format(value)
                 query = query_part_1 + '\n' + query_part_2 + ')'
-                self.cursor.execute(query)
+                try:
+                    self.cursor.execute(query)
+                except pyodbc.IntegrityError as e:
+                    print('pause')
             self._import_person(row)
-            pub.sendMessage('UpdateMessage', arg1='{} written to database'.format(max_id))
+            pub.sendMessage('UpdateMessage', arg1='{} written to database'.format(self.max_id))
         return 0
 
     def _query_item_id(self):
@@ -747,19 +739,44 @@ class ImportTools:
 
     def _prep_persons(self, row):
         # Helper method for the specimen import method
-        relevant_cols = self._find_relevant_column('Person')
         col_names = {25: 'collector',
                 81: 'determinavit',
                 123: 'preparator'}
-        persons = {'collector': {},
-                   'determinavit': {},
-                   'preparator': {}}
+        persons = {'collector': [],
+                   'determinavit': [],
+                   'preparator': []}
         for col_num in col_names.keys():
             key = col_names[col_num]
+            if row[col_num -1].value is None:
+                continue
             if ';' in row[col_num - 1].value:
-                print('HEY YOU NEED TO WRITE THIS')
+                i = 0
+                for person in row[col_num - 1].split(';'):
+                    person_data = {key + '_pid': person}
+                    if key == 'collector':
+                        person_data['coll_event_id'] = self._query_site_event((row[51].value, row[13].value))[1]
+                        person_data['seq_num'] = i                       
+                    if key == 'determinavit':
+                        person_data['taxonomy_id'] = self._query_taxonomy()
+                        person_data['seq_num'] = i
+                    if key =='preparator':
+                        person_data['seq_num'] = i
+                    persons[key].append(person_data)
+                    i += 1
+            else:
+                person_data = {key + '_pid': row[col_num - 1].value}
+                if key == 'collector':
+                    person_data['coll_event_id'] = self._query_site_event((row[51].value, row[13].value))[1]
+                    person_data['seq_num'] = 0
+                if key == 'determinavit':
+                    person_data['taxonomy_id'] = self._query_taxonomy()
+                    person_data['seq_num'] = 0
+                if key =='preparator':
+                    person_data['item_id'] = self.max_id
+                    person_data['seq_num'] = 0
+                persons[key].append(person_data)
 
-        
+
         return persons
 
     def _query_taxonomy(self):
@@ -773,10 +790,25 @@ class ImportTools:
         data_row = self.ws[row_num]
         values = self._prep_persons(data_row)
         for table in values.keys():
-            keys = ', '.join([thing for thing in values[table].keys()])
-            fields = 'item_id, {0}, seq_num'.format(keys)
-            query_part_1 = 'Insert into {0}({1})'.format(table, fields)
-            query_part_2 = "Values({}".format
+            if values[table] is []:
+                continue
+            for person in values[table]:
+                keys = ', '.join(list(person.keys()))
+                query_part_1 = 'Insert into {0}({1})'.format(table, keys)
+                impt_values = ''
+                for key in keys.split(', '):
+                    impt_values += str(person[key]) + ', '
+
+                query_part_2 = 'Values ({})'.format(impt_values[:-2])
+                query = '{0}\n{1}'.format(query_part_1, query_part_2)
+                try:
+                    self.cursor.execute(query)
+                except pyodbc.IntegrityError as e:
+                    if e.args[0]=='23000':
+                        continue
+                    else:
+                        print('WTF')
+
 
         return 0 
     def _set_identity_insert(self, table):
