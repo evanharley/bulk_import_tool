@@ -298,6 +298,15 @@ class BulkImportTest(unittest.TestCase):
         status, message = self.impt._check_persontaxa()
         self.assertEqual(test_values, [status, message])
 
+    def test_check_collector(self):
+        self.impt._to_test()
+        test_values = [0, 1]
+        values = []
+        for thing in (340287, 340291):
+            seq_num = self.impt._check_collector(thing)
+            values.append(seq_num)
+        self.assertEqual(test_values, values)
+
 
 if __name__ == '__main__':
     unittest.main()
