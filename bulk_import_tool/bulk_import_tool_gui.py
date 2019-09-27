@@ -183,12 +183,15 @@ class ToolsWindow(wx.Frame):
         processes = ['Full Import',
                      'Write GeographicSites and Collection Events',
                      'Write Specimen, Person and Taxonomy Data',
+                     'Update Existing Records',
                      'Write Person Data'
                      ]
         process_dlg = wx.SingleChoiceDialog(self, 'Choose the process you wish to perform',
                                            'Process Chooser', processes, wx.CHOICEDLG_STYLE)
         if process_dlg.ShowModal() == wx.ID_OK:
             process = process_dlg.GetStringSelection()
+        else:
+            wx.MessageVox('Select a Process', "Error", wx.OK | wx.ICON_ERROR)
         process_dlg.Destroy()
         prg_dlg = ImportToolsProgressDialog()
         prg_dlg.Show()
@@ -198,6 +201,8 @@ class ToolsWindow(wx.Frame):
             status = self.impt.write_siteevent_to_db()
         elif process == 'Write Specimen, Person and Taxonomy Data':
             status = self.impt.write_specimen_taxa_persons_to_db()
+        elif process == 'Update Existing Records':
+            status = self.impt.write_specimen_taxa_persons_to_db(update=True)
         elif process == "Write Person Data":
             status = self.impt.write_persons_to_db()
         if status != 0:

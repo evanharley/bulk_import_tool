@@ -1001,12 +1001,12 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', arg1='Complete!!')
         self.proc_log.append('Import GeographicSite and CollectionEvent')
 
-    def write_specimen_taxa_persons_to_db(self):
+    def write_specimen_taxa_persons_to_db(self, update=False):
         # Method to write just specimen related data to the database (setp 2 for the above disciplines)
         pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
                         arg2=1, arg3=1)
         self._set_triggers()
-        self._import_specimen()
+        self._import_specimen(update)
         pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
                         arg2=1, arg3=1)
         self._set_triggers()
