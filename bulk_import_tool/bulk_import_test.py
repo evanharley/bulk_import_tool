@@ -12,6 +12,7 @@ class BulkImportTest(unittest.TestCase):
         file_name = 'IMM import template - test.xlsx'
         self.impt._get_file(file_name)
         self.impt._get_prog_info()
+        self.impt.discipline = 'inv'
         self.maxDiff = None
     
     def test_find_persons(self):
@@ -193,7 +194,7 @@ class BulkImportTest(unittest.TestCase):
         self.fail("Not Implemented")
 
     def test_import_specimen(self):
-        self.fail("Not Implemented")
+        self.impt._import_specimen()
 
     def test_write_to_test(self):
         self.impt._to_test()
@@ -306,6 +307,28 @@ class BulkImportTest(unittest.TestCase):
             seq_num = self.impt._check_collector(thing)
             values.append(seq_num)
         self.assertEqual(test_values, values)
+
+    def test_get_item_id(self):
+        test_value = 2056010
+        value = self.impt._get_item_id('V209394')
+        self.assertEqual(test_value, value)
+        return 0
+
+    def test_write_update(self):
+        self.impt.max_id = 200000
+        test_result = self.impt._write_item_query(4, True)
+        result = "Update Item\nset status_cd = 'catalog', area_cd = '', catalogue_num = 'TEST_CN_01', description = 'Test item 1'"+\
+            "\nwhere item_id = 200000"
+        self.assertEqual(test_result, result)
+        print(result[1].format(*result[2]))
+
+    def test_write_insert(self):
+        self.impt.max_id = 2000000
+        test_result = self.impt._write_item_query(4)
+        result = "Insert into Item (item_id, status_cd, area_cd, catalogue_num, description)\n"+\
+           "VALUES (2000000, 'catalog', '', 'TEST_CN_01', 'Test item 1')" 
+                
+        self.assertEqual(test_result, result)
 
 
 if __name__ == '__main__':

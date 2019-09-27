@@ -46,6 +46,7 @@ class ToolsWindow(wx.Frame):
         # begin wxGlade: tools_window.__init__
         kwds["style"] = kwds.get("style", 0) | wx.DEFAULT_FRAME_STYLE
         wx.Frame.__init__(self, *args, **kwds)
+        self.Center()
         self.SetSize((400, 200))
         self.choice_1 = wx.Choice(self, wx.ID_ANY, choices=["Botany", "Entomology", "Geology", "Herpetology",
                                                             "Ichthyology", "Invertebrate Zoology",
@@ -56,6 +57,7 @@ class ToolsWindow(wx.Frame):
         self.button_8 = wx.Button(self, wx.ID_ANY, "Write to DB")
         file_dialog = wx.FileDialog(self, "Open Template", wildcard='.xlsx Files (*.xlsx)|*.xlsx',
                                     style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        file_dialog.Center()
         file_dialog.ShowModal()
         self.impt = ImportTools()
         self.impt._get_file(file_dialog.GetPath())
