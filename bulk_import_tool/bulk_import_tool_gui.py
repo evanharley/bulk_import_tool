@@ -13,7 +13,7 @@ class ImportToolsProgressDialog(wx.Dialog):
         def __init__(self):
             """Constructor"""
             wx.Dialog.__init__(self, None, title="Progress")
-            self.SetSize((400, 200))
+            self.SetSize((800, 400))
             self.count = 0
             self.max = 0
             self.message = wx.TextCtrl(self, wx.ID_ANY, 'Please Wait...', style = wx.TE_READONLY)
