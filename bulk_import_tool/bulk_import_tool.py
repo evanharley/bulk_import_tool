@@ -626,12 +626,37 @@ class ImportTools:
                     value = values[datum]
                 part2 += f", {value}"
         else:
-             part2 = part2.format(**values)
+            for datum in values.keys():
+                if isinstance(values[datum], str):
+                    values[datum] = f"'{values[datum]}'"
+                elif isinstance(values[datum], datetime):
+                    values[datum] = f"'{values[datum].strftime('%Y/%m/%d')}'"
+                else:
+                    continue
+            part2 = part2.format(**values)
 
         query = part1 + '\n' + part2 
         if not update:
             query += ')'
         return query
+
+    def _check_process(self, process, row_num):
+        row = self.ws[row_num]
+        processes = {'item': 'Item',
+                         'nhitem': 'NHItem',
+                         'disc_item': 'DisciplineItem',
+                         'preparation': 'Preparation',
+                         'taxonomy': 'ImptTaxon',
+                         'persons': 'Person',
+                         'ChemTreat': 'ChemicalTreatment',
+                         'FieldMeas': 'FieldMeasurement'}
+        relevant_cols = self._find_relevant_column(processes[process])
+        values = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+                for col in relevant_cols if row[col].value is not None} 
+        if values == {}:
+            return False
+        return True
+
 
     def _import_specimen(self, update=False):
         # Main method for importing all data which hinges on the item_id
@@ -645,7 +670,7 @@ class ImportTools:
             if update is not True:
                 self.max_id += 1
             else:
-                cat_num = self.ws[self.keys['Item.catalogue_num']]
+                cat_num = self.ws[row][3].value
                 self.max_id = self._get_item_id(cat_num)
             processes = {'item': self._write_item_query,
                          'nhitem': self._write_nhitem_query,
@@ -658,6 +683,8 @@ class ImportTools:
                          }
             for process in ['item', 'nhitem', 'disc_item', 'preparation', 
                             'ChemTreat','taxonomy', 'FieldMeas']:
+                if not self._check_process(process, row):
+                    continue
                 query = processes[process](row, update)
                 if query == '':
                     continue
@@ -670,13 +697,17 @@ class ImportTools:
                     print('pause')
 
             event_num = self._query_site_event((self.ws[row][51].value, self.ws[row][13].value))[1]
-            person_id = self.ws[row][25]
-            if event_num not in events.keys() or \
-                value in events.keys() and person_id not in events[value]:
-                if event_num not in events.keys():
-                    events[event_num] = []
-                status, stuff = self._import_person(row)
-                events[stuff[0]].extend(stuff[1])
+            person_id = self.ws[row][24].value
+            try:
+                if event_num not in events.keys() \
+                    or person_id not in events[event_num]:
+                    if event_num not in events.keys():
+                        events[event_num] = []
+                    status, stuff = self._import_person(row)
+                    if stuff != []:
+                        events[stuff[0]].extend(stuff[1])
+            except NameError as e:
+                print('pause')
             pub.sendMessage('UpdateMessage', arg1=f'{self.max_id} written to database')
         return 0
 
@@ -733,19 +764,19 @@ class ImportTools:
                     'offset': 3},
                    'nhitem':
                    {'table_name':'NaturalHistoryItem', 
-                    'format': f"set discipline_cd = '{self.discipline}'",
+                    'format': f"set discipline_cd = '{self.discipline}', ",
                     'offset': 2},
-                   'discitem': {'table_name': f'{self._get_full_disc()}Item', format:"set"},
-                   'offset': 1}
+                   'discitem': {'table_name': f'{self._get_full_disc()}Item', 'format':"set ",
+                   'offset': 1}}
         query_part_1 = f"Update {formats[table]['table_name']}"
         query_part_2 = formats[table]['format']
         insert_keys = insert_keys.split(', ')[formats[table]['offset']:]
         nums = [j for j in range(len(insert_keys))]
         for i in range(len(insert_keys)):
             if i == 0:
-                query_part_2 += f"{insert_keys[i]} = '{{{insert_keys[i]}}}'"
+                query_part_2 += f"{insert_keys[i]} = {{{insert_keys[i]}}}"
             else:
-                query_part_2 += f", {insert_keys[i]} = '{{{insert_keys[i]}}}'"
+                query_part_2 += f", {insert_keys[i]} = {{{insert_keys[i]}}}"
         query_part_2 += f'\nwhere item_id = {self.max_id}'
         return query_part_1, query_part_2
 
@@ -777,9 +808,9 @@ class ImportTools:
         values = self._prep_nhitem(data_row)
         insert_keys += ', '.join([item for item in values.keys()])
         if not update:
-            query_part_1, query_part_2 = self._write_insert('item',insert_keys)
+            query_part_1, query_part_2 = self._write_insert('nhitem',insert_keys)
         else:
-            query_part_1, query_part_2 = self._write_update('item', insert_keys)
+            query_part_1, query_part_2 = self._write_update('nhitem', insert_keys)
         query = self._finalize_query(query_part_1, query_part_2, values, update)
         return query
 
@@ -814,9 +845,9 @@ class ImportTools:
         insert_keys = 'item_id, '
         values = self._prep_preparation(data_row)
         insert_keys += ', '.join([item for item in values.keys()])
-        query_part_1 = "Insert into Preparation({})".format(insert_keys)
+        query_part_1 = "Insert into Preparation({})".format(insert_keys.strip(', '))
         query_part_2 = "VALUES({0}".format(self.max_id)
-        query = self._finalize_query(query_part_1, query_part_2, values, False)
+        query = self._finalize_query(query_part_1, query_part_2.strip(', '), values, False)
         return query
 
     def _prep_taxon(self, row):
@@ -831,9 +862,9 @@ class ImportTools:
         insert_keys = 'item_id, accepted, cf, aff, '
         values = self._prep_taxon(data_row)
         insert_keys += ', '.join([item for item in values.keys()])
-        query_part_1 = "Insert into Taxonomy({})".format(insert_keys)
+        query_part_1 = "Insert into Taxonomy({})".format(insert_keys.strip(', '))
         query_part_2 = "VALUES({0}, 1, 0, 0".format( self.max_id)
-        query = self._finalize_query(query_part_1, query_part_2, values, False)
+        query = self._finalize_query(query_part_1, query_part_2.strip(', '), values, False)
         return query
 
     def _prep_chemical_treatment(self, row):
@@ -849,9 +880,9 @@ class ImportTools:
         insert_keys = 'item_id, seq_num, '
         values = self._prep_chemical_treatment(data_row)
         insert_keys += ', '.join([item for item in values.keys()])
-        query_part_1 = "Insert into ChemicalTreatment('{}')".format(insert_keys)
+        query_part_1 = "Insert into ChemicalTreatment('{}')".format(insert_keys.strip(', '))
         query_part_2 = "VALUES({0}, 0, ".format(self.max_id)
-        query = self._finalize_query(query_part_1, query_part_2, values, False)
+        query = self._finalize_query(query_part_1, query_part_2.strip(', '), values, False)
         return query
 
     def _prep_field_measurement(self, row):
@@ -866,9 +897,9 @@ class ImportTools:
         insert_keys = 'item_id, '
         values = self._prep_field_measurement(data_row)
         insert_keys += ', '.join([item for item in values.keys()])
-        query_part_1 = "Insert into FieldMeasurement({})".format(insert_keys)
+        query_part_1 = "Insert into FieldMeasurement({})".format(insert_keys.strip(', '))
         query_part_2 = "VALUES({0}".format(self.max_id)
-        query = self._finalize_query(query_part_1, query_part_2, values, False)
+        query = self._finalize_query(query_part_1, query_part_2.strip(', '), values, False)
         return query
 
     def _prep_persons(self, row):
@@ -885,29 +916,45 @@ class ImportTools:
                 continue
             if ';' in row[col_num - 1].value:
                 i = 0
-                for person in row[col_num - 1].split(';'):
+                for person in row[col_num - 1].value.split('; '):
                     person_data = {key + '_pid': person}
                     if key == 'collector':
-                        person_data['coll_event_id'] = self._query_site_event((row[51].value, row[13].value))[1]
-                        person_data['seq_num'] = i                       
+                        coll_event_id = self._query_site_event((row[51].value, row[13].value))[1]
+                        if self._person_exists(key, coll_event_id, person):
+                            continue
+                        person_data['coll_event_id'] = coll_event_id
+                        person_data['seq_num'] = self._check_person(key, coll_event_id) + i
                     if key == 'determinavit':
+                        if self._person_exists(key, self._query_taxonomy(), person):
+                            continue
                         person_data['taxonomy_id'] = self._query_taxonomy()
-                        person_data['seq_num'] = i
+                        person_data['seq_num'] = self._check_person(key, person_data['taxonomy_id']) + i
                     if key =='preparator':
-                        person_data['seq_num'] = i
+                        if self._person_exists(key, self.max_id, person):
+                            continue
+                        person_data['item_id'] = self.max_id
+                        person_data['seq_num'] = self._check_person(key, self.max_id) + i
                     persons[key].append(person_data)
                     i += 1
             else:
                 person_data = {key + '_pid': row[col_num - 1].value}
+                person = row[col_num - 1].value
                 if key == 'collector':
-                    person_data['coll_event_id'] = self._query_site_event((row[51].value, row[13].value))[1]
-                    person_data['seq_num'] = self._check_person(key, person_data['coll_event_id'])
+                    coll_event_id = self._query_site_event((row[51].value, row[13].value))[1]
+                    if self._person_exists(key, coll_event_id, person):
+                        continue
+                    person_data['coll_event_id'] = coll_event_id
+                    person_data['seq_num'] = self._check_person(key, coll_event_id)
                 if key == 'determinavit':
+                    if self._person_exists(key, self._query_taxonomy(), person):
+                        continue
                     person_data['taxonomy_id'] = self._query_taxonomy()
                     person_data['seq_num'] = self._check_person(key, person_data['taxonomy_id'])
                 if key =='preparator':
+                    if self._person_exists(key, self.max_id, person):
+                        continue
                     person_data['item_id'] = self.max_id
-                    person_data['seq_num'] = self._check_person(key, person_data['item_id'])
+                    person_data['seq_num'] = self._check_person(key, self.max_id)
                 persons[key].append(person_data)
 
 
@@ -943,7 +990,11 @@ class ImportTools:
                     else:
                         print("This isn't right")
         collectors = [values['collector'][i]['collector_pid'] for i in range(len(values['collector']))]
-        collector_info = (values['collector'][0]['coll_event_id'], collectors)
+        if values['collector'] != []:
+            collector_info = (values['collector'][0]['coll_event_id'], collectors)
+        else:
+            collector_info = []
+
         return 0, collector_info
 
     def _check_person(self, type, id):
@@ -957,6 +1008,17 @@ class ImportTools:
             return seq_num + 1
         else:
             return 0
+
+    def _person_exists(self, table, id, person):
+        id_types = {'collector': ['coll_event_id', 'collector_pid'],
+                    'determinavit': ['taxonomy_id', 'determinavit_pid'],
+                    'preparator': ['item_id', 'preparator_pid']}
+        query = f"select * from {table} where {id_types[table][0]} = {id} and {id_types[table][1]} = {person}"
+        results = self.cursor.execute(query).fetchall()
+        if results == []:
+            return False
+        
+        return True
 
     def _set_identity_insert(self, table):
         # Allows/Disallows the inserting into the data tables
@@ -1010,6 +1072,7 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
                         arg2=1, arg3=1)
         self._set_triggers()
+        self.cursor.execute("exec BuildAllScientificNames @discipline_cd = '{self.discipline}'")
         self.cursor.commit()
         pub.sendMessage('UpdateMessage', arg1='Complete!!')
         self.proc_log.append('Import Complete')
@@ -1025,6 +1088,7 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
                         arg2=1, arg3=1)
         self._set_triggers()
+        self.cursor.execute("exec BuildAllScientificNames @discipline_cd = '{self.discipline}'")
         self.cursor.commit()
         pub.sendMessage('UpdateMessage', arg1='Complete!!')
         self.proc_log.append('Import Complete')
