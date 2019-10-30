@@ -342,22 +342,22 @@ class ImportTools:
         if len(missing) > 0:
             for sheet in missing:
                 self.data_file.create_sheet(sheet)
-
+        pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
         persons = self._find_persons()
         self._write_persontaxa(persons, 'Person')
-        pub.sendMessage('UpdateMessage', arg1="Persons Complete")
+        pub.sendMessage('UpdateMessage', message="Persons Complete")
 
         taxa = self._find_taxa()
         self._write_persontaxa(taxa, 'Taxon')
-        pub.sendMessage('UpdateMessage', arg1="Taxa Complete")
+        pub.sendMessage('UpdateMessage', message="Taxa Complete")
 
         sites = self._generate_sites()
         self._write_siteevent(sites, "Site")
-        pub.sendMessage('UpdateMessage', arg1="Sites Complete")
+        pub.sendMessage('UpdateMessage', message="Sites Complete")
 
         events = self._generate_events()
         self._write_siteevent(events, 'Event')
-        pub.sendMessage('UpdateMessage', arg1="Events Complete")
+        pub.sendMessage('UpdateMessage', message="Events Complete")
 
         self.data_file.save(self.data_filename)
         self.proc_log.append('Write Spreadsheet')
@@ -419,6 +419,7 @@ class ImportTools:
         if not self._check_persontaxa:
             return 1, 'Persons/Taxa has not been completed'
         
+        pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
         for sheet in ['Person', 'Taxon', 'Site', 'Event']:
             data = {sheet: {}}
             workingsheet = self.data_file[sheet]
@@ -497,7 +498,7 @@ class ImportTools:
 
     def _to_test(self):
         self._connection.close()
-        self._connection = pyodbc.connect('DSN=IMMTest; Trusted_Connection=yes;')
+        self._connection = pyodbc.connect('DSN=ImportTest; Trusted_Connection=yes;')
         self.cursor = self._connection.cursor()
         return 0, 'Database connection changed to Test'
 

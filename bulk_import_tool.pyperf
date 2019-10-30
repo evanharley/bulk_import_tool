@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<ProfilingTarget xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ProjectTarget>
+    <TargetProject>d8408eb1-6abd-4ec0-ab78-17fa78155ce8</TargetProject>
+    <FriendlyName>bulk_import_tool</FriendlyName>
+  </ProjectTarget>
+  <Reports>
+    <Report>
+      <Filename>C:\Users\evharley\AppData\Local\Temp\bulk_import_tool_20191021.vsp</Filename>
+    </Report>
+  </Reports>
+</ProfilingTarget>

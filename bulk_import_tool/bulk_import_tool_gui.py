@@ -9,37 +9,27 @@ from pubsub import pub
 # begin wxGlade: extracode
 # end wxGlade
 
-class ImportToolsProgressDialog(wx.Dialog):
+class ImportToolsProgressDialog(wx.ProgressDialog):
         def __init__(self):
             """Constructor"""
-            wx.Dialog.__init__(self, None, title="Progress")
+            wx.ProgressDialog.__init__(self, "Processing", "Please wait...")
             self.SetSize((800, 400))
-            self.count = 0
-            self.max = 0
-            self.message = wx.TextCtrl(self, wx.ID_ANY, 'Please Wait...', style = wx.TE_READONLY)
-            self.progress = wx.Gauge(self, range=4)
-            self.progress.SetMaxSize((400, 50))
-            sizer = wx.BoxSizer(wx.VERTICAL)
-            sizer.Add(self.message, 0, wx.ALIGN_CENTRE)
-            sizer.Add(self.progress, 1, wx.EXPAND)
-            self.SetSizer(sizer)
- 
+            self.count = 0 
             # create a pubsub receiver
             pub.subscribe(self.updateProgress, "UpdateMessage")
 
-        def updateProgress(self, arg1, arg2=0, arg3=0):
+        def updateProgress(self, message, update_count=0, new_max=0):
             """"""
-            if arg2 == 1:
+            if update_count == 1:
                 self.count = 0
-                self.max = arg3
+                self.SetRange(new_max)
             else:
                 self.count += 1
-            self.message.SetValue(arg1)
  
-            if self.count >= self.max:
+            if self.count >= self.GetRange():
                 self.Destroy()
  
-            self.progress.SetValue(self.count)
+            self.Update(self.count, message)
 
 class ToolsWindow(wx.Frame):
     def __init__(self, *args, **kwds):
@@ -48,9 +38,12 @@ class ToolsWindow(wx.Frame):
         wx.Frame.__init__(self, *args, **kwds)
         self.Center()
         self.SetSize((400, 200))
-        self.choice_1 = wx.Choice(self, wx.ID_ANY, choices=["Botany", "Entomology", "Geology", "Herpetology",
-                                                            "Ichthyology", "Invertebrate Zoology",
-                                                            "Mammalogy", "Ornithology"])
+        self.choice_1 = wx.Choice(self, wx.ID_ANY, choices=["BC Archaeology", "Botany", "Entomology", 
+                                                            "Geology", "Herpetology", "Ichthyology", 
+                                                            "Indigenous Collections", 
+                                                            "Invertebrate Zoology",
+                                                            "Mammalogy", "Modern History",
+                                                            "Ornithology"])
         self.button_3 = wx.Button(self, wx.ID_ANY, "Set Discipline")
         self.button_6 = wx.Button(self, wx.ID_ANY, "Write Spreadsheet")
         self.button_7 = wx.Button(self, wx.ID_ANY, "Add IDs")
@@ -128,6 +121,8 @@ class ToolsWindow(wx.Frame):
         if self.impt.discipline in ['bot', 'ent', 'geo', 'her', 'ich', 'inv', 'mam', 'orn', 'pal']:
             self.impt.area_cd = 'natural'
         else:
+            hhdisc = {'arc': 'archeolg', 'eth': 'ethnolg', 'mod': 'history'}
+            self.impt.discipline = hhdisc[self.impt.discipline]
             self.impt.area_cd = 'human'
         event.Skip()
 
@@ -138,7 +133,6 @@ class ToolsWindow(wx.Frame):
             return 0
         else:
             prg_dlg = ImportToolsProgressDialog()
-            prg_dlg.max = 4
             prg_dlg.Show()
             write = self.impt.write_spreadsheet()
             if write == 0:
@@ -154,7 +148,6 @@ class ToolsWindow(wx.Frame):
             return 0
         prg_dlg = ImportToolsProgressDialog()
         prg_dlg.Show()
-        prg_dlg.max = 4
         write, message = self.impt._add_ids()
         if write == 0:
             dialog = wx.MessageBox('Adding IDs is complete', 'Info',
@@ -191,7 +184,7 @@ class ToolsWindow(wx.Frame):
         if process_dlg.ShowModal() == wx.ID_OK:
             process = process_dlg.GetStringSelection()
         else:
-            wx.MessageVox('Select a Process', "Error", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox('Select a Process', "Error", wx.OK | wx.ICON_ERROR)
         process_dlg.Destroy()
         prg_dlg = ImportToolsProgressDialog()
         prg_dlg.Show()
