@@ -122,7 +122,13 @@ class ImportTools:
                      'DisciplineItem': ['[DISCIPLINE].', disc + 'Item.'],
                      'ImptTaxon': ['Taxonomy.', 'taxon_id'],
                      'Preparation': ['Preparation.'],
-                     'ChemicalTreatment': ['ChemicalTreatment.']}
+                     'ChemicalTreatment': ['ChemicalTreatment.'],
+                     'Maker': ['MakerOrganization.org_name'],
+                     'Artist': ['Artist.search_name'],
+                     'HHItem':['HumanHistoryItem.'],
+                     'EthItem': ['EthnologyItem.'],
+                     'ArcItem': ['ArchaeologyItem.'],
+                     'MHist': ['ModernHistoryItem.']}
         table_id = table_ids[method]
 
 
@@ -336,7 +342,7 @@ class ImportTools:
             row += 1
         return 0
 
-    def write_spreadsheet(self):
+    def write_spreadsheet(self, type = 'nhist'):
         # Writes the found and generated data to new tabs in the import spreadsheet
         missing = {'IMM_template', 'Person', 'Taxon', 'Site', 'Event'} - set(self.data_file.sheetnames)
         if len(missing) > 0:
@@ -347,9 +353,21 @@ class ImportTools:
         self._write_persontaxa(persons, 'Person')
         pub.sendMessage('UpdateMessage', message="Persons Complete")
 
-        taxa = self._find_taxa()
-        self._write_persontaxa(taxa, 'Taxon')
-        pub.sendMessage('UpdateMessage', message="Taxa Complete")
+        if type == 'nhist':
+            taxa = self._find_taxa()
+            self._write_persontaxa(taxa, 'Taxon')
+            pub.sendMessage('UpdateMessage', message="Taxa Complete")
+
+        if type == 'hhist':
+            pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
+            artists = self._find_artists()
+            self._write_persontaxa(persons, 'Artist')
+            pub.sendMessage('UpdateMessage', message="Artist Complete")
+
+            pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
+            makers = self._find_makers()
+            self._write_persontaxa(persons, 'Maker')
+            pub.sendMessage('UpdateMessage', message="Marker Complete")
 
         sites = self._generate_sites()
         self._write_siteevent(sites, "Site")
@@ -1107,4 +1125,7 @@ class ImportTools:
         self.cursor.commit()
         pub.sendMessage('UpdateMessage', arg1='Complete!!')
         self.proc_log.append('Import Complete')
+        return 0
+
+    def write_humanhist_to_db(self):
         return 0
