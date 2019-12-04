@@ -2,7 +2,9 @@ import wx
 from bulk_import_tool import ImportTools
 from pubsub import pub
 
-
+'''Graphical User Interface for the Bulk Import application for Integrated Museum Management, 
+Royal BC Museum's Collection Management tool'''
+APP_RELOAD = 1
 # begin wxGlade: dependencies
 # end wxGlade
 
@@ -10,34 +12,49 @@ from pubsub import pub
 # end wxGlade
 
 class ImportToolsProgressDialog(wx.ProgressDialog):
-        def __init__(self):
-            """Constructor"""
-            wx.ProgressDialog.__init__(self, "Processing", "Please wait...")
-            self.SetSize((800, 400))
-            self.count = 0 
-            # create a pubsub receiver
-            pub.subscribe(self.updateProgress, "UpdateMessage")
+    '''Progress Dialog box'''
+    def __init__(self):
+        """Constructor"""
+        wx.ProgressDialog.__init__(self, "Processing", "Please wait...")
+        self.SetSize((800, 400))
+        self.count = 0 
+        # create a pubsub receiver
+        pub.subscribe(self.updateProgress, "UpdateMessage")
 
-        def updateProgress(self, message, update_count=0, new_max=0):
-            """"""
-            if update_count == 1:
-                self.count = 0
-                self.SetRange(new_max)
-            else:
-                self.count += 1
+    def updateProgress(self, message, update_count=0, new_max=0):
+        """"""
+        if update_count == 1:
+            self.count = 0
+            self.SetRange(new_max)
+        elif update_count == 2:
+            self.SetRange(self.GetRange() + new_max)
+        else:
+            self.count += 1
  
-            if self.count >= self.GetRange():
-                self.Destroy()
+        if self.count >= self.GetRange():
+            self.Destroy()
  
-            self.Update(self.count, message)
+        self.Update(self.count, message)
 
 class ToolsWindow(wx.Frame):
+    ''' Main window'''
     def __init__(self, *args, **kwds):
         # begin wxGlade: tools_window.__init__
         kwds["style"] = kwds.get("style", 0) | wx.DEFAULT_FRAME_STYLE
         wx.Frame.__init__(self, *args, **kwds)
+        menubar = wx.MenuBar()
+        fileMenu = wx.Menu()
+        open = wx.MenuItem(fileMenu, wx.ID_OPEN, '&Open\tCTRL+O')
+        reload = wx.MenuItem(fileMenu, APP_RELOAD, '&Reload\tCTRL+R')
+        quit = wx.MenuItem(fileMenu, wx.ID_EXIT, '&Quit\tCTRL+Q')
+        
+        fileMenu.Append(open)
+        fileMenu.Append(reload)
+        fileMenu.Append(quit)
+        menubar.Append(fileMenu, '&File')
+        
         self.Center()
-        self.SetSize((400, 200))
+        self.SetSize((400, 250))
         self.choice_1 = wx.Choice(self, wx.ID_ANY, choices=["BC Archaeology", "Botany", "Entomology", 
                                                             "Geology", "Herpetology", "Ichthyology", 
                                                             "Indigenous Collections", 
@@ -48,30 +65,24 @@ class ToolsWindow(wx.Frame):
         self.button_6 = wx.Button(self, wx.ID_ANY, "Write Spreadsheet")
         self.button_7 = wx.Button(self, wx.ID_ANY, "Add IDs")
         self.button_8 = wx.Button(self, wx.ID_ANY, "Write to DB")
-        file_dialog = wx.FileDialog(self, "Open Template", wildcard='.xlsx Files (*.xlsx)|*.xlsx',
-                                    style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
-        file_dialog.Center()
-        file_dialog.ShowModal()
         self.impt = ImportTools()
-        self.impt._get_file(file_dialog.GetPath())
-        self.impt._get_prog_info()
-        file_dialog.Destroy()
-        if self.impt.proc_log != []:
-            self.status = self.impt.proc_log[-1]
-        else:
-            self.status = 'New Import'
+        self.status = 'Please Load an Import Spreadsheet'
         self.__set_properties()
         self.__do_layout()
+        self.Bind(wx.EVT_MENU, self.OnQuit, quit)
+        self.Bind(wx.EVT_MENU, self.OpenFile, open)
+        self.Bind(wx.EVT_MENU, self.Reload, reload)
         self.Bind(wx.EVT_BUTTON, self.set_discipline, self.button_3)
         self.Bind(wx.EVT_BUTTON, self.write_spreadsheet, self.button_6)
         self.Bind(wx.EVT_BUTTON, self.add_ids, self.button_7)
         self.Bind(wx.EVT_BUTTON, self.write_to_database, self.button_8)
+        self.SetMenuBar(menubar)
         # end wxGlade
 
     def __set_properties(self):
         # begin wxGlade: tools_window.__set_properties
         self.SetTitle("Import Tools")
-        self.choice_1.SetMinSize((66, 25))
+        self.choice_1.SetMinSize((100, 25))
         self.button_3.SetMinSize((81, 23))
         # end wxGlade
 
@@ -85,11 +96,12 @@ class ToolsWindow(wx.Frame):
         sizer_5 = wx.BoxSizer(wx.VERTICAL)
         label_1 = wx.StaticText(self, wx.ID_ANY, "Select the process step, and input the Discipline Type",
                                 style=wx.ALIGN_CENTER)
-        label_1.SetMinSize((257, 30))
+        label_1.SetMinSize((300, 30))
         sizer_3.Add(label_1, 0, wx.ALIGN_CENTER | wx.ALL, 0)
 
-        label_2 = wx.TextCtrl(self, wx.ID_ANY, self.status, style = wx.TE_READONLY)
-        sizer_3.Add(label_2, 0, wx.ALIGN_CENTER | wx.ALL, 0)
+        self.label_2 = wx.TextCtrl(self, wx.ID_ANY, self.status, style = wx.TE_CENTRE | wx.TE_READONLY)
+        self.label_2.SetMinSize((250,20))
+        sizer_3.Add(self.label_2, 0, wx.ALIGN_CENTER | wx.ALL, 0)
         sizer_5.Add(self.choice_1, 0, wx.ALIGN_CENTER, 0)
         sizer_5.Add(self.button_3, 0, wx.ALIGN_CENTER, 0)
         sizer_3.Add(sizer_5, 0, wx.EXPAND, 0)
@@ -115,6 +127,28 @@ class ToolsWindow(wx.Frame):
         self.SetSizer(sizer_3)
         self.Layout()
         # end wxGlade
+
+    def OnQuit(self, event):
+        self.Close()
+
+    def OpenFile(self, event):
+        file_dialog = wx.FileDialog(self, "Open Template", wildcard='.xlsx Files (*.xlsx)|*.xlsx',
+                                    style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        file_dialog.Center()
+        file_dialog.ShowModal()
+        self.impt._get_file(file_dialog.GetPath())
+        self.impt._get_prog_info()
+        file_dialog.Destroy()
+        if self.impt.proc_log != []:
+            self.label_2.SetLabel(self.impt.proc_log[-1])
+        else:
+            self.label_2.SetLabel('New Import')
+
+    def Reload(self, event):
+        self.impt._get_file(self.impt.data_filename)
+        self.impt._get_prog_info()
+        self.label_2.SetLabel(self.impt.proc_log[-1])
+        
 
     def set_discipline(self, event):  # wxGlade: tools_window.<event_handler>
         self.impt.discipline = self.choice_1.StringSelection[:3].lower()

@@ -7,11 +7,9 @@ from datetime import datetime
 
 
 class ImportTools:
-
+    '''Tool for importing data into Integrated Museum Management. Royal BC Museum's main collection management tool'''
     def __init__(self, *args, **kwargs):
         
-        # Discipline should be gotten from user at the start of the import
-        # so when coding GUI it should be included
         self.data_filename = ''
         self.discipline = ''
         self.area_cd = ''
@@ -21,7 +19,7 @@ class ImportTools:
         self.ws = None
         self.keys = None
         self.max_id = self._query_item_id()
-        self.max_col = 135
+        self.max_col = None
         ## self.max_col = 138 actual value
         self.write_status = {'GeographicSite': False, 
                              'CollectionEvent': False,
@@ -30,24 +28,41 @@ class ImportTools:
         self.proc_log = []
 
     def _get_file(self, filename):
+        # Takes file name, opens the excel file as an openpyxl workbook object then sets up some
+        # other necessary attributes
         self.data_filename = filename
         try:
             self.data_file = openpyxl.load_workbook(filename)
         except FileNotFoundError:
             return None
         self.ws = self.data_file['IMM_template']
+        self.max_col = self._set_max_col()
         self._set_keys()
         
 
+    def _set_max_col(self):
+        if self.ws.max_column != 138:
+            # Find out what the actual max cols of the NH spreadsheet is and the HH spreadsheets, 
+            # and make corrections then return the appropriate values
+            # CURRENT IMPLEMENTATION IS JUST FOR TESTING LATEST CHANGE TO SPREAD SHEET!!!!!!!!!!!
+            print('Oh NO!')
+            return 138
+        else:
+            return self.ws.max_column
+        
+
     def _set_keys(self):
+        # gets the spreadsheets column headers for the purpose of having keys for the dicionaries used later
         self.keys = [self.ws[3][col] for col in range(self.max_col) if self.ws[3][col].value is not None]
 
     def _write_prog(self):
+        # Updates the progress log for the file loaded
         prog_log = open('prog_log.log', 'a')
-        prog_log.write('{0}: {1}\n'.format(self.data_filename, ', '.join(self.proc_log)))
+        prog_log.write('{0}: {1}\n'.format(self.data_filename, self.proc_log[-1]))
         return 0
 
     def _get_prog_info(self):
+        # Reads the progress log for the file loaded
         temp = []
         try:
             prog_log = open('prog_log.log', 'r')
@@ -60,10 +75,10 @@ class ImportTools:
         self.proc_log = temp
         return 0
 
-    def _find_persons(self):
+    def _find_persons(self, type):
         # Return all unique persons in the spreadsheet for import
         # Persons to be a dict in format {personName: [ids]}
-        person_cols = self._find_relevant_column('Person')
+        person_cols = self._find_relevant_column(type)
         names = []
         persons = {}
         for row in range(4, self.ws.max_row + 1):
@@ -83,8 +98,15 @@ class ImportTools:
         names = list(set(names))
 
         for name in names:
-            query = "Select person_id from Person where search_name = '{}'".format(name)
-            results = self.cursor.execute(query).fetchall()
+            if "'" in name:
+                name = name.replace("'", "''")
+            query = self.__find_person_query(type, name)
+            try:
+                results = self.cursor.execute(query).fetchall()
+            except:
+                print(query)
+                print('pause')
+
             persons[name] = []
             if results is not []:
                 for i in range(len(results)):
@@ -92,6 +114,14 @@ class ImportTools:
             else:
                 persons[name] = ['NEW?']
         return persons
+
+    def _find_person_query(self, type = 'Person', name):
+        table = type
+        column = f'{type}_id'
+
+        query = f'select {column} from {table} where search_name = {name}'
+        return query
+
 
     def _get_full_disc(self):
         disciplines = {
@@ -103,7 +133,10 @@ class ImportTools:
             'inv': 'Invertebrate',
             'mam': 'Mammalogy',
             'orn': 'Ornithology',
-            'pal': 'Paleontology'
+            'pal': 'Paleontology',
+            'history':'Human History',
+            'archeolg':'Archaeology',
+            'ethnolg':'Ethnology',
             }
         return disciplines[self.discipline]
 
@@ -128,6 +161,10 @@ class ImportTools:
                      'HHItem':['HumanHistoryItem.'],
                      'EthItem': ['EthnologyItem.'],
                      'ArcItem': ['ArchaeologyItem.'],
+                     'ArcSite': ['ArchaeologicalSite.'],
+                     'ArcEvent': ['ArchaeologicalCollectionEvent.'],
+                     'Technique': ['Technique.'],
+                     'Material': ['Material.'],
                      'MHist': ['ModernHistoryItem.']}
         table_id = table_ids[method]
 
@@ -143,7 +180,9 @@ class ImportTools:
         # Returns the split value of person names where a delineator is present
         delineators = ";:|/\\"
         if any(char in person_names for char in delineators):
-            person_names = person_names.replace(';', ',').replace(':', ',').replace('|', ',')
+            for char in delineators:
+                if char in person_names:
+                    person_names = person_names.replace(char, ',')
             names = [name.strip(' ') for name in person_names.split(',')]
         else:
             names = person_names
@@ -291,6 +330,8 @@ class ImportTools:
         return generated_events
 
     def _write_persontaxa(self, data, section):
+        max = len(data)
+        pub.sendMessage('UpdateMessage', message=f'Writing {section}', update_count=2, new_max=max)
         # Writes persons and taxa to spreadsheet
         row = 1
         col = 'A'
@@ -301,6 +342,7 @@ class ImportTools:
         work_sheet[sheet_ref] = section + '_ids'
         row += 1
         for key in data.keys():
+            pub.sendMessage('UpdateMessage', message = f'Writing {key} to Spreadsheet')
             sheet_ref = col + str(row)
             work_sheet[sheet_ref] = key
             for i in range(len(data[key])):
@@ -310,6 +352,8 @@ class ImportTools:
         return 0
 
     def _write_siteevent(self, data, section):
+        max = len(data)
+        pub.sendMessage('UpdateMessage', message=f'Writing {section}', update_count=2, new_max=max)
         # Writes sites and events to spreadsheet
         row = 1
         col = 1
@@ -321,6 +365,7 @@ class ImportTools:
         first_record = data[list(data.keys())[1]]
         keys = [key for key in first_record.keys()]
         for key in data.keys():
+            pub.sendMessage('UpdateMessage', message = f'Writing {key} to Spreadsheet')
             if row == 1:
                 worksheet.cell(row=row + 1, column=1, value=key)
             else:
@@ -364,7 +409,6 @@ class ImportTools:
             self._write_persontaxa(persons, 'Artist')
             pub.sendMessage('UpdateMessage', message="Artist Complete")
 
-            pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
             makers = self._find_makers()
             self._write_persontaxa(persons, 'Maker')
             pub.sendMessage('UpdateMessage', message="Marker Complete")
@@ -437,7 +481,7 @@ class ImportTools:
         if not self._check_persontaxa:
             return 1, 'Persons/Taxa has not been completed'
         
-        pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
+        pub.sendMessage('UpdateMessage', message='Adding IDs to Spreadsheet', update_count=1, new_max=4)
         for sheet in ['Person', 'Taxon', 'Site', 'Event']:
             data = {sheet: {}}
             workingsheet = self.data_file[sheet]
@@ -454,7 +498,7 @@ class ImportTools:
                 self._handle_persontaxa(data)
             if sheet in ['Site', 'Event']:
                 self._handle_siteevent(data)
-            pub.sendMessage('UpdateMessage', arg1="{sheet} Complete")
+            pub.sendMessage('UpdateMessage', arg1=f"{sheet} Complete")
         try:    
             self.data_file.save(self.data_filename)
         except PermissionError as e:
@@ -1107,6 +1151,7 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
                         arg2=1, arg3=1)
         self._set_triggers()
+        self.cursor.execute("")
         self.cursor.execute("exec BuildAllScientificNames @discipline_cd = '{self.discipline}'")
         self.cursor.commit()
         pub.sendMessage('UpdateMessage', arg1='Complete!!')
