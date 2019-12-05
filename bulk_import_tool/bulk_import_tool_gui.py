@@ -45,11 +45,9 @@ class ToolsWindow(wx.Frame):
         menubar = wx.MenuBar()
         fileMenu = wx.Menu()
         open = wx.MenuItem(fileMenu, wx.ID_OPEN, '&Open\tCTRL+O')
-        reload = wx.MenuItem(fileMenu, APP_RELOAD, '&Reload\tCTRL+R')
         quit = wx.MenuItem(fileMenu, wx.ID_EXIT, '&Quit\tCTRL+Q')
         
         fileMenu.Append(open)
-        fileMenu.Append(reload)
         fileMenu.Append(quit)
         menubar.Append(fileMenu, '&File')
         
@@ -71,7 +69,6 @@ class ToolsWindow(wx.Frame):
         self.__do_layout()
         self.Bind(wx.EVT_MENU, self.OnQuit, quit)
         self.Bind(wx.EVT_MENU, self.OpenFile, open)
-        self.Bind(wx.EVT_MENU, self.Reload, reload)
         self.Bind(wx.EVT_BUTTON, self.set_discipline, self.button_3)
         self.Bind(wx.EVT_BUTTON, self.write_spreadsheet, self.button_6)
         self.Bind(wx.EVT_BUTTON, self.add_ids, self.button_7)
@@ -173,6 +170,7 @@ class ToolsWindow(wx.Frame):
                 dialog = wx.MessageBox('Writing Spread sheet is complete', 'Info', 
                               wx.OK | wx.ICON_INFORMATION)
         self.impt._write_prog()
+        self.Reload()
         event.Skip()
 
     def add_ids(self, event):
@@ -190,6 +188,7 @@ class ToolsWindow(wx.Frame):
             dialog = wx.MessageBox('Adding IDs failed! \n {}'.format(write), 'Error',
                                    wx.OK | wx.ICON_ERROR)
         self.impt._write_prog()
+        self.Reload()
         event.Skip()
 
     def write_to_database(self, event):
@@ -236,7 +235,7 @@ class ToolsWindow(wx.Frame):
             wx.MessageBox(status, "ERROR!", wx.OK | wx.ICON_ERROR)
             return 0
         self.impt._write_prog()
-        self.impt._get_prog_info()
+        self.Reload()
         event.Skip()
 
 

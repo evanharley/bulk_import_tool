@@ -41,12 +41,11 @@ class ImportTools:
         
 
     def _set_max_col(self):
-        if self.ws.max_column != 138:
-            # Find out what the actual max cols of the NH spreadsheet is and the HH spreadsheets, 
-            # and make corrections then return the appropriate values
-            # CURRENT IMPLEMENTATION IS JUST FOR TESTING LATEST CHANGE TO SPREAD SHEET!!!!!!!!!!!
-            print('Oh NO!')
-            return 138
+        if self.ws.max_column != 138 or self.ws.max_column != 29:
+            if self.ws[3][10].startswith('Arch'):
+                self.max_col = 29
+            else:
+                self.max_col = 138
         else:
             return self.ws.max_column
         
@@ -147,7 +146,7 @@ class ImportTools:
         disc = self._get_full_disc()
         table_ids = {'Person': ['Person.search_name'],
                      'Taxon': ['Taxon.term'],
-                     'Events': ['CollectionEvent.'],
+                     'Events': ['CollectionEvent.', 'ArchaeologicalCollectionEvent.'],
                      'Sites': ['GeographicSite.', 'GeoSiteNote'],
                      'Item': ['Item'],
                      'NHItem': ['NaturalHistoryItem.'],
@@ -162,7 +161,6 @@ class ImportTools:
                      'EthItem': ['EthnologyItem.'],
                      'ArcItem': ['ArchaeologyItem.'],
                      'ArcSite': ['ArchaeologicalSite.'],
-                     'ArcEvent': ['ArchaeologicalCollectionEvent.'],
                      'Technique': ['Technique.'],
                      'Material': ['Material.'],
                      'MHist': ['ModernHistoryItem.']}
@@ -224,8 +222,11 @@ class ImportTools:
             
         return taxa
 
-    def _generate_sites(self):
+    def _generate_sites(self, area = 'nhist'):
         # Generates new sites for import, from unique sites in the import spreasheet
+        area_dict = {'nhist': "GeographicSite.collector_site_id",
+                     'hhist': "ArchaeologicalSite.borden_number"}
+        site_type = area_dict[area]
         new_site_id = self._get_max_site_id()
         relevant_cols = self._find_relevant_column('Sites')
         keys = self.ws[2]
@@ -237,26 +238,24 @@ class ImportTools:
                 generated_sites[site_id] = {}
                 for index in relevant_cols:
                     generated_sites[site_id][self.keys[index].value] = self.ws[row][index].value
-                generated_sites[site_id]["GeographicSite.collector_site_id"] = site_id
+                generated_sites[site_id][site_type] = site_id
                 self.ws.cell(row=row, column=51, value=site_id)
             else:
                 site = {}
-                difference = 0
+                unique = 1
                 for index in relevant_cols:
                     site[self.keys[index].value] = self.ws[row][index].value
                 for item in generated_sites.keys():
-                    diff = {key: site[key] for key in generated_sites[item] 
-                            if key != "GeographicSite.collector_site_id" and site[key] != generated_sites[item][key]}
-                    if len(diff.keys()) > 0:
-                        difference += 1
+                    if site != item:
+                        continue
                     else:
-                        difference = 0
+                        unique = 0
                         matching_id = item
                         break
-                if difference > 0:
+                if unique == 1:
                     generated_sites[site_id] = site
                     self.ws.cell(row=row, column=51, value=site_id)
-                    generated_sites[site_id]["GeographicSite.collector_site_id"] = site_id
+                    generated_sites[site_id][site_type] = site_id
                 else:
                     self.ws.cell(row=row, column=51, value=matching_id)
         return generated_sites
@@ -264,10 +263,10 @@ class ImportTools:
     def _get_max_site_id(self):
         # Queries the database for the highest collector_site_id for the discipline selected
         # returns the discipline specific prefix and the site_id
-        prefix_query = "Select geo_site_prefix from NHDisciplineType where discipline_cd = '{}'".format(self.discipline)
+        prefix_query = f"Select geo_site_prefix from NHDisciplineType where discipline_cd = '{self.discipline}'"
         prefix = self.cursor.execute(prefix_query).fetchall()[0][0]
         query = "Select max(convert(int, SUBSTRING(collector_site_id, 3, 100))) from GeographicSite " + \
-            "where discipline_cd = '{}' and substring(collector_site_id, 1, 2) = '{}'".format(self.discipline, prefix)
+            f"where discipline_cd = '{self.discipline}' and substring(collector_site_id, 1, 2) = '{prefix}'"
         result = self.cursor.execute(query).fetchone()
         if len(str(result)) > 6:
             diff = 6 - len(str(result))
@@ -275,14 +274,18 @@ class ImportTools:
         max_site_id = [prefix, str(result[0])]
         return max_site_id
 
-    def _get_max_event_id(self):
+    def _get_max_event_id(self, area = 'nhist'):
         # Queries the database for the highest event_num for the discipline selected
         # returns the discipline specific prefix and the event_num
-        prefix_query = "Select coll_event_prefix from NHDisciplineType where discipline_cd = " +\
-                                "'{}'".format(self.discipline)
-        prefix = self.cursor.execute(prefix_query).fetchall()[0][0]
-        query = "Select max(convert(int, SUBSTRING(event_num, 3, 100))) from CollectionEvent " + \
-            "where discipline_cd = '{}' and substring(event_num, 1, 2) = '{}'".format(self.discipline, prefix)
+        if area == 'nhist':
+            prefix_query = f"Select coll_event_prefix from NHDisciplineType where discipline_cd = " +\
+                                "'{self.discipline}'"
+            prefix = self.cursor.execute(prefix_query).fetchall()[0][0]
+            query = f"Select max(convert(int, SUBSTRING(event_num, 3, 100))) from CollectionEvent " + \
+            "where discipline_cd = '{self.discipline}' and substring(event_num, 1, 2) = '{prefix}'"
+        else:
+            prefix = 'CE'
+            query = "Select max(convert(int, SUBSTRING(event_num, 3, 100))) from ArchaeologicalCollectionEvent "
         result = self.cursor.execute(query).fetchone()
         if len(str(result)) > 6:
             diff = 6 - len(str(result))
@@ -403,16 +406,6 @@ class ImportTools:
             self._write_persontaxa(taxa, 'Taxon')
             pub.sendMessage('UpdateMessage', message="Taxa Complete")
 
-        if type == 'hhist':
-            pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
-            artists = self._find_artists()
-            self._write_persontaxa(persons, 'Artist')
-            pub.sendMessage('UpdateMessage', message="Artist Complete")
-
-            makers = self._find_makers()
-            self._write_persontaxa(persons, 'Maker')
-            pub.sendMessage('UpdateMessage', message="Marker Complete")
-
         sites = self._generate_sites()
         self._write_siteevent(sites, "Site")
         pub.sendMessage('UpdateMessage', message="Sites Complete")
@@ -502,7 +495,7 @@ class ImportTools:
         try:    
             self.data_file.save(self.data_filename)
         except PermissionError as e:
-            return e, 'Failed!'
+            return e, 'Failed! The file is still open'
         self.proc_log.append('IDs added')
         return 0, 'Done'
 
