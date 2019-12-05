@@ -225,7 +225,7 @@ class ImportTools:
     def _generate_sites(self, area = 'nhist'):
         # Generates new sites for import, from unique sites in the import spreasheet
         area_dict = {'nhist': "GeographicSite.collector_site_id",
-                     'hhist': "ArchaeologicalSite.borden_number"}
+                     'hhist': "ArchaeologicalSite.temporary_num"}
         site_type = area_dict[area]
         new_site_id = self._get_max_site_id()
         relevant_cols = self._find_relevant_column('Sites')
@@ -392,27 +392,26 @@ class ImportTools:
 
     def write_spreadsheet(self, type = 'nhist'):
         # Writes the found and generated data to new tabs in the import spreadsheet
-        missing = {'IMM_template', 'Person', 'Taxon', 'Site', 'Event'} - set(self.data_file.sheetnames)
+        if type == 'nhist':
+            missing = {'IMM_template', 'Person', 'Taxon', 'Site', 'Event'} - set(self.data_file.sheetnames)
+            tabs = {'Person': [self._find_persons, self._write_persontaxa], 
+                    'Taxon': [self._find_taxa, self._write_persontaxa], 
+                    'Site': [self._generate_sites, self.__write_siteevent], 
+                    'Event': [self._generate_events, self.__write_siteevent]}
+        else:
+            missing = {'IMM_template', 'Person', 'Site', 'Event'} - set(self.data_file.sheetnames)
+            tabs = {'Person': [self._find_persons, self._write_persontaxa],  
+                    'Site': [self._generate_archsites, self.__write_siteevent], 
+                    'Event': [self._generate_events, self.__write_siteevent]}
         if len(missing) > 0:
             for sheet in missing:
                 self.data_file.create_sheet(sheet)
-        pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
-        persons = self._find_persons()
-        self._write_persontaxa(persons, 'Person')
-        pub.sendMessage('UpdateMessage', message="Persons Complete")
 
-        if type == 'nhist':
-            taxa = self._find_taxa()
-            self._write_persontaxa(taxa, 'Taxon')
-            pub.sendMessage('UpdateMessage', message="Taxa Complete")
-
-        sites = self._generate_sites()
-        self._write_siteevent(sites, "Site")
-        pub.sendMessage('UpdateMessage', message="Sites Complete")
-
-        events = self._generate_events()
-        self._write_siteevent(events, 'Event')
-        pub.sendMessage('UpdateMessage', message="Events Complete")
+        for tab in tabs.keys():
+            pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
+            data = tabs[tab][0]
+            tabs[tab][1](data, tab)
+            pub.sendMessage('UpdateMessage', message=f"{tab}s Complete")
 
         self.data_file.save(self.data_filename)
         self.proc_log.append('Write Spreadsheet')
@@ -447,10 +446,14 @@ class ImportTools:
                 test_results[value] = False
         return test_results
     
-    def _check_sheets(self):
+    def _check_sheets(self, type):
         # Helper method for the test_spreadsheet method
         # Checks that the required sheets are there
-        if set(self.data_file.sheetnames) == ('IMM_template', 'Person', 'Taxon', 'Site', 'Event'):
+        if type == 'nhist':
+            expected = ('IMM_template', 'Person', 'Taxon', 'Site', 'Event')
+        else:
+            expected = ('IMM_template', 'Person', 'Site', 'Event')
+        if set(self.data_file.sheetnames) == expected:
             return True
         else:
             return False
