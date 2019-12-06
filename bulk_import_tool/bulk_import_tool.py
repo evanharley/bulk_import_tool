@@ -13,7 +13,11 @@ class ImportTools:
         self.data_filename = ''
         self.discipline = ''
         self.area_cd = ''
-        self._connection = pyodbc.connect('DSN=IMMProd; Trusted_Connection=yes;')
+        self._connection = pyodbc.connect("Driver={ODBC Driver 17 for SQL Server};"
+                      "Server=RBCMIMMLIVE;"
+                      "Database=Mastodon;"
+                      "UID=rbcmmastodon;"
+                      "PWD=M&lt;jkui78&amp;")
         self.cursor = self._connection.cursor()
         self.data_file = None
         self.ws = None
@@ -21,7 +25,9 @@ class ImportTools:
         self.max_id = self._query_item_id()
         self.max_col = None
         ## self.max_col = 138 actual value
-        self.write_status = {'GeographicSite': False, 
+        self.write_status = {'ArchaeologicalSite': False,
+                             'ArchaeologicalCollectionEvent': False,
+                             'GeographicSite': False, 
                              'CollectionEvent': False,
                              'Taxonomy': False,
                              'Triggers': False}
@@ -57,7 +63,7 @@ class ImportTools:
     def _write_prog(self):
         # Updates the progress log for the file loaded
         prog_log = open('prog_log.log', 'a')
-        prog_log.write('{0}: {1}\n'.format(self.data_filename, self.proc_log[-1]))
+        prog_log.write(f'{self.data_filename}: {self.proc_log[-1]}\n')
         return 0
 
     def _get_prog_info(self):
@@ -210,10 +216,10 @@ class ImportTools:
     def _query_taxa(self, sn):
         # Returns the taxon ids of a scientific name
         if not sn.endswith('sp.'):
-            query = "Select * from ScientificName where scientific_name ='{}'".format(sn)
+            query = f"Select * from ScientificName where scientific_name ='{sn}'"
         else:
             sn = sn[: sn.find(' ')]
-            query = "Select taxon_id, term from taxon where term = '{}'".format(sn)
+            query = f"Select taxon_id, term from taxon where term = '{sn}'"
         results = self.cursor.execute(query).fetchall()
         if results != []:
             taxa = [result[0] for result in results]
@@ -222,11 +228,11 @@ class ImportTools:
             
         return taxa
 
-    def _generate_sites(self, area = 'nhist'):
+    def _generate_sites(self):
         # Generates new sites for import, from unique sites in the import spreasheet
         area_dict = {'nhist': "GeographicSite.collector_site_id",
                      'hhist': "ArchaeologicalSite.temporary_num"}
-        site_type = area_dict[area]
+        site_type = area_dict[site.area_cd]
         new_site_id = self._get_max_site_id()
         relevant_cols = self._find_relevant_column('Sites')
         keys = self.ws[2]
@@ -274,10 +280,10 @@ class ImportTools:
         max_site_id = [prefix, str(result[0])]
         return max_site_id
 
-    def _get_max_event_id(self, area = 'nhist'):
+    def _get_max_event_id(self):
         # Queries the database for the highest event_num for the discipline selected
         # returns the discipline specific prefix and the event_num
-        if area == 'nhist':
+        if self.area_cd == 'nhist':
             prefix_query = f"Select coll_event_prefix from NHDisciplineType where discipline_cd = " +\
                                 "'{self.discipline}'"
             prefix = self.cursor.execute(prefix_query).fetchall()[0][0]
@@ -390,9 +396,9 @@ class ImportTools:
             row += 1
         return 0
 
-    def write_spreadsheet(self, type = 'nhist'):
+    def write_spreadsheet(self):
         # Writes the found and generated data to new tabs in the import spreadsheet
-        if type == 'nhist':
+        if self.area_cd == 'nhist':
             missing = {'IMM_template', 'Person', 'Taxon', 'Site', 'Event'} - set(self.data_file.sheetnames)
             tabs = {'Person': [self._find_persons, self._write_persontaxa], 
                     'Taxon': [self._find_taxa, self._write_persontaxa], 
@@ -438,7 +444,7 @@ class ImportTools:
             query_field = '[' + value[value.find('.') + 1:] + ']'
             if query_table == '[[DISCIPLINE]]':
                 query_table = '[' + disciplines[self.discipline] + 'Item' + ']'
-            query = "select {query_field} from {query_table}"
+            query = f"select {query_field} from {query_table}"
             try:
                 test_results = self.cursor.execute(query).fetchone()
                 test_results[value] = True
@@ -550,13 +556,21 @@ class ImportTools:
 
     def _to_prod(self):
         self._connection.close()
-        self._connection = pyodbc.connect('DSN=IMMProd; Trusted_Connection=yes;')
+        self._connection = pyodbc.connect("Driver={ODBC Driver 17 for SQL Server};"
+                      "Server=RBCMIMMLIVE;"
+                      "Database=Mastodon;"
+                      "UID=rbcmmastodon;"
+                      "PWD=M&lt;jkui78&amp;")
         self.cursor = self._connection.cursor()
         return 0, "Database connection changed to Production"
 
     def _to_test(self):
         self._connection.close()
-        self._connection = pyodbc.connect('DSN=ImportTest; Trusted_Connection=yes;')
+        self._connection = pyodbc.connect("Driver={ODBC Driver 17 for SQL Server};"
+                      "Server=RBCMIMMSTAGING;"
+                      "Database=ImportTest;"
+                      "UID=rbcmmastodon;"
+                      "PWD=M&lt;jkui78&amp;")
         self.cursor = self._connection.cursor()
         return 0, 'Database connection changed to Test'
 
@@ -573,30 +587,37 @@ class ImportTools:
         #note_keys = {'Notes (Date)': 'GeoSiteNote.note_date', 
         #             'Notes (Note)': 'GeoSiteNote.note', 
         #             'Notes (Title)': 'GeoSiteNote.title'}
-        max_query = "Select Max(geo_site_id) from GeographicSite"
+        id_col = 'geo_site_id' if self.area_cd == 'nhist' else 'site_id'
+        table = 'GeographicSite' if self.area_cd == 'nhist' else 'ArchaeologicalSite'
+        max_query = f"Select Max(id_col) from {table}"
         max_id = self.cursor.execute(max_query).fetchone()[0]
         working_sheet = self.data_file['Site']
-        self._set_identity_insert('GeographicSite')
+        self._set_identity_insert(table)
         for row in range(2, working_sheet.max_row + 1):
             data = {working_sheet[1][col].value: working_sheet[row][col].value
                     for col in range(1, working_sheet.max_column) 
                     if working_sheet[row][col].value is not None}
 
             max_id += 1
-            insert_keys = 'geo_site_id, discipline_cd, '
+            insert_keys = 'geo_site_id, discipline_cd, ' if self.area_cd == 'nhist' \
+                else 'site_id, borden_area, borden_site, temporary_num'
             insert_keys += ', '.join([item.split('.')[1] for item in data.keys()])
-            query_part_1 = "INSERT INTO GeographicSite({})".format(insert_keys)
-            query_part_2 = "VALUES ({}, '{}'".format(max_id, self.discipline)
+            query_part_1 = f"INSERT INTO {table}({insert_keys})"
+            if self.area_cd == 'nhist':
+                query_part_2 = f"VALUES ({max_id}, '{self.discipline}'"
+            else:
+                query_part_2 = f"VALUES ({max_id}"
             for datum in data.keys():
                 if datum in ('Notes (Date)', 'Notes (Note)', 'Notes (Title)'):
                     continue
                 if isinstance(data[datum], str):
-                    value = "'{}'".format(data[datum])
+                    value = f"'{data[datum]}'"
                 else:
                     value = data[datum]
-                query_part_2 += ", {}".format(value)
+                query_part_2 += f", {value}"
             query = query_part_1 + ' \n' + query_part_2 + ')'
-            item = data["GeographicSite.collector_site_id"]
+            item = data["GeographicSite.collector_site_id"] if self.area_cd == 'nhist' \
+                else data['ArchaeologicalSite.site_id']
             #if any('Notes (Date)', 'Notes (Note)', 'Notes (Title)' in data.keys()):
             #    note_query = "INSERT INTO GeoSiteNote (geo_site_id, note_date, title, note)"
             #    note_query += "\n VALUES({})".format(max_id, 
@@ -606,7 +627,7 @@ class ImportTools:
             pub.sendMessage('UpdateMessage', arg1="{} written to db".format(item))
             
             self.cursor.execute(query)
-        self._set_identity_insert('GeographicSite')
+        self._set_identity_insert(table)
         return 0
 
     def _import_event(self):
@@ -617,7 +638,9 @@ class ImportTools:
         relevant_cols = self._find_relevant_column('Events')
         keys = {self.ws[2][col].value: self.keys[col].value 
                 for col in relevant_cols}
-        max_query = "Select Max(coll_event_id) from CollectionEvent"
+        id_col = 'coll_event_id' if self.area_cd =='nhist' else 'event_id'
+        table = 'CollectionEvent' if self.area_cd == 'nhist' else 'ArchaeologicalCollectionEvent'
+        max_query = f"Select Max({id_col}) from {table}"
         max_id = self.cursor.execute(max_query).fetchone()[0]
         working_sheet = self.data_file['Event']
         self._set_identity_insert('CollectionEvent')
@@ -627,10 +650,14 @@ class ImportTools:
                     if working_sheet[row][col].value is not None}
 
             max_id += 1
-            insert_keys = 'coll_event_id, discipline_cd, '
+            insert_keys = 'coll_event_id, discipline_cd, ' if self.area_cd == 'nhist' \
+                else 'event_id, '
             insert_keys += ', '.join([keys[item].split('.')[1] for item in data.keys()])
-            query_part_1 = "INSERT INTO CollectionEvent({})".format(insert_keys)
-            query_part_2 = "VALUES ({}, '{}'".format(max_id, self.discipline)
+            query_part_1 = f"INSERT INTO {table}({insert_keys})"
+            if self.area_cd == 'nhist':
+                query_part_2 = f"VALUES ({max_id}, '{self.discipline}'"
+            else:
+                query_part_2 = f"VALUES ({max_id}"
             for datum in data.keys():
                 if isinstance(data[datum], str):
                     value = "'{}'".format(data[datum])
@@ -644,18 +671,21 @@ class ImportTools:
             item = data["Event Number"]
             pub.sendMessage('UpdateMessage', arg1="{} written to db".format(item))
             self.cursor.execute(query)
-        self._set_identity_insert('CollectionEvent')
+        self._set_identity_insert(table)
         return 0
 
     def _import_site_event(self):
         # Specific logic for importing the linkage between sites and events
+        table = 'GeographicSite_CollectionEvent' if self.area_cd == 'nhist' \
+            else 'ArchaeologicalSite_Event'
+        cols = 'geo_site_id, coll_event_id' if self.area_cd == 'nhist' \
+            else 'site_id, event_id'
         site_event = []
         for row in range(4, self.ws.max_row + 1):
             site = self.ws[row][51].value
             event = self.ws[row][13].value
             site_event.append(self._query_site_event((site, event)))
-        query = '''Insert into GeographicSite_CollectionEvent(geo_site_id, coll_event_id)
-                    Values ({0}, {1})'''
+        query = f"Insert into {tables}({cols}) Values ({0}, {1})"
         site_event = set(site_event)
         for pair in site_event:
             self.cursor.execute(query.format(pair[0], pair[1]))
@@ -664,13 +694,18 @@ class ImportTools:
 
     def _query_site_event(self, site_event: tuple):
         # Gets datbase ids for sites and events
+        site_table = 'GeographicSite' if self.area_cd == 'nhist' else 'ArchaeologicalSite'
+        site_param = 'collector_sitre_id' if self.area_cd == 'nhist' else 'temporary_num'
+        event_table = 'CollectionEvent' if self.area_cd == 'nhist' else 'ArchaeologicalCollectionEvent'
+        site_id_col = 'geo_site_id' if self.area_cd == 'nhist' else 'site_id'
+        event_id_col = 'coll_event_id' if self.area_cd == 'nhist' else 'event_id'
         site = site_event[0]
         event = site_event[1]
 
-        site_query = "Select geo_site_id from GeographicSite where collector_site_id = '{}'"
-        event_query = "Select coll_event_id from CollectionEvent where event_num = '{}'"
-        site = self.cursor.execute(site_query.format(site)).fetchone()[0]
-        event = self.cursor.execute(event_query.format(event)).fetchone()[0]
+        site_query = f"Select {site_id_col} from {site_table} where {site_param} = '{site}'"
+        event_query = f"Select {event_id_col} from {event_table} where event_num = '{event}'"
+        site = self.cursor.execute(site_query).fetchone()[0]
+        event = self.cursor.execute(event_query).fetchone()[0]
 
         return site, event
 
@@ -731,15 +766,26 @@ class ImportTools:
             else:
                 cat_num = self.ws[row][3].value
                 self.max_id = self._get_item_id(cat_num)
-            processes = {'item': self._write_item_query,
-                         'nhitem': self._write_nhitem_query,
-                         'disc_item': self._write_discipline_item_query,
-                         'preparation': self._write_preparation_query,
-                         'taxonomy': self._write_taxon_query,
-                         'persons': self._prep_persons,
-                         'ChemTreat': self._write_chem_query,
-                         'FieldMeas': self._write_field_query
+            if self.area_cd == 'nhist':
+                processes = {'item': self._write_item_query,
+                             'nhitem': self._write_nhitem_query,
+                             'disc_item': self._write_discipline_item_query,
+                             'preparation': self._write_preparation_query,
+                             'taxonomy': self._write_taxon_query,
+                             'persons': self._prep_persons,
+                             'ChemTreat': self._write_chem_query,
+                             'FieldMeas': self._write_field_query
                          }
+            else:
+                processes = {'item':'',
+                             'hhitem':'',
+                             'arcitem':'',
+                             '':'',
+                             '':'',
+                             '':'',
+                             '':'',
+                             '':'',
+                        }
             for process in ['item', 'nhitem', 'disc_item', 'preparation', 
                             'ChemTreat','taxonomy', 'FieldMeas']:
                 if not self._check_process(process, row):
@@ -1082,9 +1128,9 @@ class ImportTools:
     def _set_identity_insert(self, table):
         # Allows/Disallows the inserting into the data tables
         if self.write_status[table] is False:
-            query = 'set identity_insert {} on;'.format(table)
+            query = f'set identity_insert {table} on;'
         else:
-            query = 'set identity_insert {} off;'.format(table)
+            query = f'set identity_insert {table} off;'
         self.cursor.execute(query)
         self.write_status[table] = not self.write_status[table]
         return 0
