@@ -79,7 +79,7 @@ class ToolsWindow(wx.Frame):
     def __set_properties(self):
         # begin wxGlade: tools_window.__set_properties
         self.SetTitle("Import Tools")
-        self.choice_1.SetMinSize((100, 25))
+        self.choice_1.SetMinSize((150, 25))
         self.button_3.SetMinSize((81, 23))
         # end wxGlade
 

@@ -16,8 +16,8 @@ class ImportTools:
         self._connection = pyodbc.connect("Driver={ODBC Driver 17 for SQL Server};"
                       "Server=RBCMIMMLIVE;"
                       "Database=Mastodon;"
-                      "UID=rbcmmastodon;"
-                      "PWD=M&lt;jkui78&amp;")
+                      "UID=appuser;"
+                      "PWD=Museum2019**;")
         self.cursor = self._connection.cursor()
         self.data_file = None
         self.ws = None
@@ -48,10 +48,10 @@ class ImportTools:
 
     def _set_max_col(self):
         if self.ws.max_column != 138 or self.ws.max_column != 29:
-            if self.ws[3][10].startswith('Arch'):
-                self.max_col = 29
+            if self.ws[3][10].value.startswith('Arch'):
+                return 29
             else:
-                self.max_col = 138
+                return 138
         else:
             return self.ws.max_column
         
@@ -80,10 +80,12 @@ class ImportTools:
         self.proc_log = temp
         return 0
 
-    def _find_persons(self, type):
+    def _find_persons(self):
         # Return all unique persons in the spreadsheet for import
         # Persons to be a dict in format {personName: [ids]}
-        person_cols = self._find_relevant_column(type)
+        max = self.ws.max_row
+        pub.sendMessage('UpdateMessage', message=f'Finding Unique Persons', update_count=2, new_max=max)
+        person_cols = self._find_relevant_column('Person')
         names = []
         persons = {}
         for row in range(4, self.ws.max_row + 1):
@@ -95,17 +97,21 @@ class ImportTools:
                         names.extend(name)
                     else:
                         names.append(name)
+            pub.sendMessage('UpdateMessage', message=f'Row {row}: Complete!')
 
         for i in range(len(names)):
             if ',' in names[i]:
                 name = [thing.strip() for thing in names[i].split(',')]
                 names[i] = ' '.join(name)
         names = list(set(names))
-
-        for name in names:
+        mess = 'Querying the database for people'
+        pub.sendMessage('UpdateMessage', message=mess, update_count=2, new_max=2*len(names))
+        for name in names: 
+            mess = f'Querying the database for {name}'
+            pub.sendMessage('UpdateMessage', message=mess)
             if "'" in name:
                 name = name.replace("'", "''")
-            query = self.__find_person_query(type, name)
+            query = self._find_person_query(name, 'Person')
             try:
                 results = self.cursor.execute(query).fetchall()
             except:
@@ -113,18 +119,21 @@ class ImportTools:
                 print('pause')
 
             persons[name] = []
-            if results is not []:
+            if results != []:
                 for i in range(len(results)):
                     persons[name].append(results[i][0])
             else:
                 persons[name] = ['NEW?']
+            mess = f'{name} not found in database' if persons[name] == ['NEW?'] \
+                else f'{name} found. Person_id: {persons[name]}'
+            pub.sendMessage('UpdateMessage', message=mess)
         return persons
 
-    def _find_person_query(self, type = 'Person', name):
+    def _find_person_query(self, name, type = 'Person' ):
         table = type
         column = f'{type}_id'
 
-        query = f'select {column} from {table} where search_name = {name}'
+        query = f"select {column} from {table} where search_name = '{name}'"
         return query
 
 
@@ -139,7 +148,7 @@ class ImportTools:
             'mam': 'Mammalogy',
             'orn': 'Ornithology',
             'pal': 'Paleontology',
-            'history':'Human History',
+            'history':'Modern History',
             'archeolg':'Archaeology',
             'ethnolg':'Ethnology',
             }
@@ -169,7 +178,9 @@ class ImportTools:
                      'ArcSite': ['ArchaeologicalSite.'],
                      'Technique': ['Technique.'],
                      'Material': ['Material.'],
-                     'MHist': ['ModernHistoryItem.']}
+                     'MHist': ['ModernHistoryItem.'],
+                     'Location': ['Location.location_cd'],
+                     'ImptLocation':['Location.location_id']}
         table_id = table_ids[method]
 
 
@@ -183,6 +194,7 @@ class ImportTools:
     def _split_persons(self, person_names):
         # Returns the split value of person names where a delineator is present
         delineators = ";:|/\\"
+        person_names = person_names.replace(',', '~')
         if any(char in person_names for char in delineators):
             for char in delineators:
                 if char in person_names:
@@ -190,11 +202,17 @@ class ImportTools:
             names = [name.strip(' ') for name in person_names.split(',')]
         else:
             names = person_names
+        if isinstance(names, list):
+            names = [name.replace('~', ',') for name in names]
+        else:
+            names = names.replace('~', ',')
         return names
 
     def _find_taxa(self):
         # Returns the unique taxa for each taxon in the import spreadsheet
         # Taxa to be a dict in format {scientificName: [ids]}
+        max = self.ws.max_row
+        pub.sendMessage('UpdateMessage', message=f'Finding unique Taxa', update_count=2, new_max=max)
         taxon_cols = self._find_relevant_column('Taxon')
         taxa = {} 
         sns = []
@@ -205,17 +223,23 @@ class ImportTools:
                     sns.append(row_data[column].value)
                 else:
                     continue
+            pub.sendMessage('UpdateMessage', message=f'Row {row}: Complete!')
         sns = list(set(sns))
-
+        mess = 'Querying database for Taxa'
+        pub.sendMessage('UpdateMessage', message=mess, update_count=2, new_max=2*len(sns))
         for sn in sns:
+            mess = 'Querying database for {sn}'
+            pub.sendMessage('UpdateMessage', message=mess)
             taxa[sn] = []
             taxa[sn].extend(self._query_taxa(sn))
-
+            mess = f'{sn} not found in database' if taxa[sn] == ['NEW?'] \
+                else f'{sn} found. Taxon_id: {taxa[sn]}'
+            pub.sendMessage('UpdateMessage', message=mess)
         return taxa
 
     def _query_taxa(self, sn):
         # Returns the taxon ids of a scientific name
-        if not sn.endswith('sp.'):
+        if not sn.endswith('sp.') or sn.find(' ') == -1:
             query = f"Select * from ScientificName where scientific_name ='{sn}'"
         else:
             sn = sn[: sn.find(' ')]
@@ -228,19 +252,48 @@ class ImportTools:
             
         return taxa
 
+    def _find_locations(self):
+        max = self.ws.max_row
+        pub.sendMessage('UpdateMessage', message=f'Finding unique Locations', update_count=2, new_max=max)
+        loc_col = self._find_relevant_column('Location')
+        loc = {}
+        loc_cds = []
+        for row in range(4, self.ws.max_row + 1):
+            row_data = self.ws[row]
+            loc_cds.append(row_data[loc_col])
+        loc_cds = list(set(loc_cds))
+        mess = 'Querying database for Taxa'
+        pub.sendMessage('UpdateMessage', message=mess, update_count=2, new_max=2*len(sns))
+        for cd in loc_cds:
+            loc[cd] = self._query_loc_values(cd)
+            mess = f'{sn} not found in database' if taxa[sn] == ['NEW?'] \
+                else f'{sn} found. Taxon_id: {taxa[sn]}'
+            pub.sendMessage('UpdateMessage', message=mess)
+        return loc
+
+    def _query_loc_id(self, loc_cd):
+        query = f"Select location_id from Location where location_cd ='{loc_cd}'"
+        results = self.cursor.execute(query).fetchone()
+        if result != []:
+            return [result[0]]
+        else:
+            return ['NEW?']
+
     def _generate_sites(self):
         # Generates new sites for import, from unique sites in the import spreasheet
-        area_dict = {'nhist': "GeographicSite.collector_site_id",
-                     'hhist': "ArchaeologicalSite.temporary_num"}
-        site_type = area_dict[site.area_cd]
+        area_dict = {'natural': "GeographicSite.collector_site_id",
+                     'human': "ArchaeologicalSite.temporary_num"}
+        max = self.ws.max_row
+        pub.sendMessage('UpdateMessage', message=f'Finding unique Sites', update_count=2, new_max=max)
+        site_type = area_dict[self.area_cd]
         new_site_id = self._get_max_site_id()
         relevant_cols = self._find_relevant_column('Sites')
         keys = self.ws[2]
         generated_sites = {}
         for row in range(4, self.ws.max_row + 1):
-            new_site_id[1] = str(int(new_site_id[1]) + 1)
-            site_id = new_site_id[0] + new_site_id[1]
             if generated_sites == {}:
+                new_site_id[1] = str(int(new_site_id[1]) + 1)
+                site_id = new_site_id[0] + new_site_id[1]
                 generated_sites[site_id] = {}
                 for index in relevant_cols:
                     generated_sites[site_id][self.keys[index].value] = self.ws[row][index].value
@@ -252,18 +305,26 @@ class ImportTools:
                 for index in relevant_cols:
                     site[self.keys[index].value] = self.ws[row][index].value
                 for item in generated_sites.keys():
-                    if site != item:
+                    item_site = generated_sites[item].copy()
+                    item_site['GeographicSite.collector_site_id'] = None
+                    if site != item_site:
                         continue
                     else:
                         unique = 0
                         matching_id = item
                         break
+                    del item_site
                 if unique == 1:
+                    new_site_id[1] = str(int(new_site_id[1]) + 1)
+                    site_id = new_site_id[0] + new_site_id[1]
                     generated_sites[site_id] = site
                     self.ws.cell(row=row, column=51, value=site_id)
                     generated_sites[site_id][site_type] = site_id
+                    pub.sendMessage('UpdateMessage', message = f'{site_id} Generated!')
                 else:
                     self.ws.cell(row=row, column=51, value=matching_id)
+                    pub.sendMessage('UpdateMessage', message= f'Record belongs to {site_id}')
+            
         return generated_sites
 
     def _get_max_site_id(self):
@@ -283,12 +344,12 @@ class ImportTools:
     def _get_max_event_id(self):
         # Queries the database for the highest event_num for the discipline selected
         # returns the discipline specific prefix and the event_num
-        if self.area_cd == 'nhist':
-            prefix_query = f"Select coll_event_prefix from NHDisciplineType where discipline_cd = " +\
-                                "'{self.discipline}'"
+        if self.area_cd == 'natural':
+            prefix_query = "Select coll_event_prefix from NHDisciplineType where discipline_cd = " +\
+                                f"'{self.discipline}'"
             prefix = self.cursor.execute(prefix_query).fetchall()[0][0]
-            query = f"Select max(convert(int, SUBSTRING(event_num, 3, 100))) from CollectionEvent " + \
-            "where discipline_cd = '{self.discipline}' and substring(event_num, 1, 2) = '{prefix}'"
+            query = "Select max(convert(int, SUBSTRING(event_num, 3, 100))) from CollectionEvent " + \
+            f"where discipline_cd = '{self.discipline}' and substring(event_num, 1, 2) = '{prefix}'"
         else:
             prefix = 'CE'
             query = "Select max(convert(int, SUBSTRING(event_num, 3, 100))) from ArchaeologicalCollectionEvent "
@@ -302,14 +363,16 @@ class ImportTools:
     def _generate_events(self):
         # Generates new collection events for import, from the unique events in the import spreadsheet
         generated_events = {}
+        max = self.ws.max_row
+        pub.sendMessage('UpdateMessage', message=f'Finding unique Events', update_count=2, new_max=max)
         new_event_id = self._get_max_event_id()
         relevant_cols = self._find_relevant_column('Events')
         self.keys = self.ws[2]
         for row in range(4, self.ws.max_row + 1):
-            new_event_id[1] = str(int(new_event_id[1]) + 1)
-            event_id = new_event_id[0] + new_event_id[1]
             working_row = self.ws[row]
             if generated_events == {}:
+                new_event_id[1] = str(int(new_event_id[1]) + 1)
+                event_id = new_event_id[0] + new_event_id[1]
                 generated_events[event_id] = {}
                 for index in relevant_cols:
                     generated_events[event_id][self.keys[index].value] = working_row[index].value
@@ -317,24 +380,28 @@ class ImportTools:
                 self.ws.cell(row=row, column=14, value=event_id)
             else:
                 event = {}
-                difference = 0
+                unique = 1
                 for index in relevant_cols:
                     event[self.keys[index].value] = working_row[index].value
                 for item in generated_events.keys():
-                    diff = {key: event[key] for key in generated_events[item] 
-                            if key != "Event Number" and event[key] != generated_events[item][key]}
-                    if len(diff.keys()) > 0:
-                        difference += 1
+                    item_event = generated_events[item].copy()
+                    item_event['Event Number'] = None
+                    if event != item_event:
+                        continue
                     else:
-                        difference = 0
+                        unique = 0
                         matching_id = item
                         break
-                if difference > 0:
+                if unique == 1:
+                    new_event_id[1] = str(int(new_event_id[1]) + 1)
+                    event_id = new_event_id[0] + new_event_id[1]
                     generated_events[event_id] = event
                     self.ws.cell(row=row, column=14, value=event_id)
                     generated_events[event_id]["Event Number"] = event_id
+                    pub.sendMessage('UpdateMessage', message = f'{event_id} Generated!')
                 else:
                     self.ws.cell(row=row, column=14, value=matching_id)
+                    pub.sendMessage('UpdateMessage', message = f'Record belongs to {event_id}')
                 
         return generated_events
 
@@ -396,26 +463,46 @@ class ImportTools:
             row += 1
         return 0
 
+    def _write_locations(self, data):
+        max = len(data)
+        pub.sendMessage('UpdateMessage', message=f'Writing Location', update_count=2, new_max=max)
+        row = 1
+        col = 1
+        worksheet = self.data_file['Location']
+        for key in data.keys():
+            if row == 1:
+                worksheet.cell(row=row, column=col, value='Location Code')
+                worksheet.cell(row=row, column=col+1, value = 'location_id')
+                row += 1
+            else:
+                worksheet.cell(row=row, column=col, value=key)
+                worksheet.cell(row=row, column=col+1, value=data[key])
+            row += 1
+        return 0
+
+
     def write_spreadsheet(self):
         # Writes the found and generated data to new tabs in the import spreadsheet
-        if self.area_cd == 'nhist':
+        if self.area_cd == 'natural':
             missing = {'IMM_template', 'Person', 'Taxon', 'Site', 'Event'} - set(self.data_file.sheetnames)
             tabs = {'Person': [self._find_persons, self._write_persontaxa], 
                     'Taxon': [self._find_taxa, self._write_persontaxa], 
-                    'Site': [self._generate_sites, self.__write_siteevent], 
-                    'Event': [self._generate_events, self.__write_siteevent]}
+                    'Site': [self._generate_sites, self._write_siteevent], 
+                    'Event': [self._generate_events, self._write_siteevent]}
+        elif self.discipline == 'history':
+            missing = {'IMM_template', 'Location'} - set(self.data_file.sheetnames)
+            tabs = {'Location' : [self._find_locations, self._write_locations]}
         else:
             missing = {'IMM_template', 'Person', 'Site', 'Event'} - set(self.data_file.sheetnames)
             tabs = {'Person': [self._find_persons, self._write_persontaxa],  
-                    'Site': [self._generate_archsites, self.__write_siteevent], 
-                    'Event': [self._generate_events, self.__write_siteevent]}
+                    'Site': [self._generate_archsites, self._write_siteevent], 
+                    'Event': [self._generate_events, self._write_siteevent]}
         if len(missing) > 0:
             for sheet in missing:
                 self.data_file.create_sheet(sheet)
-
+        pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
         for tab in tabs.keys():
-            pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
-            data = tabs[tab][0]
+            data = tabs[tab][0]()
             tabs[tab][1](data, tab)
             pub.sendMessage('UpdateMessage', message=f"{tab}s Complete")
 
@@ -452,11 +539,13 @@ class ImportTools:
                 test_results[value] = False
         return test_results
     
-    def _check_sheets(self, type):
+    def _check_sheets(self):
         # Helper method for the test_spreadsheet method
         # Checks that the required sheets are there
-        if type == 'nhist':
+        if self.area_cd == 'natural':
             expected = ('IMM_template', 'Person', 'Taxon', 'Site', 'Event')
+        elif self.discipline == 'history':
+            expected = ('IMM_template', 'Location')
         else:
             expected = ('IMM_template', 'Person', 'Site', 'Event')
         if set(self.data_file.sheetnames) == expected:
@@ -480,11 +569,19 @@ class ImportTools:
         # Adds the relevant ids to the spreadsheet for later writing to the database
         if not self._check_sheets:
             return 1, 'This is the wrong spreadsheet'
-        if not self._check_persontaxa:
-            return 1, 'Persons/Taxa has not been completed'
+        if self.discipline != 'history':
+            if not self._check_persontaxa:
+                return 1, 'Persons/Taxa has not been completed'
+
+        if self.area_cd == 'natural':
+            expected = ('IMM_template', 'Person', 'Taxon')
+        elif self.discipline == 'history':
+            expected = ('IMM_template', 'Location')
+        else:
+            expected = ('IMM_template', 'Person')
         
         pub.sendMessage('UpdateMessage', message='Adding IDs to Spreadsheet', update_count=1, new_max=4)
-        for sheet in ['Person', 'Taxon', 'Site', 'Event']:
+        for sheet in expected:
             data = {sheet: {}}
             workingsheet = self.data_file[sheet]
             if sheet in ['Person', 'Taxon']:
@@ -498,9 +595,9 @@ class ImportTools:
                                        for i in range(1, workingsheet.max_column + 1)}
             if sheet in ['Person', 'Taxon']:
                 self._handle_persontaxa(data)
-            if sheet in ['Site', 'Event']:
-                self._handle_siteevent(data)
-            pub.sendMessage('UpdateMessage', arg1=f"{sheet} Complete")
+            else:
+                self._handle_location(data)
+            pub.sendMessage('UpdateMessage', message=f"{sheet} Complete")
         try:    
             self.data_file.save(self.data_filename)
         except PermissionError as e:
@@ -517,7 +614,7 @@ class ImportTools:
         for col in relevant_cols:
             col = col + i
             self.ws.insert_cols(col)
-            self.ws.cell(row=3, column=col, value='{}_id'.format(tab.lower()))
+            self.ws.cell(row=3, column=col, value=f'{tab.lower()}_id')
 
             for row in range(4, self.ws.max_row + 1):
                 value = self.ws.cell(row=row, column=(col + 1)).value
@@ -537,30 +634,32 @@ class ImportTools:
         self._set_keys()
         return 0
 
-    def _handle_siteevent(self, data):
-        # Specific logic for handling writing site and event ids etc to the spreadsheet
-        tab = list(data.keys())[0]
-        data = data[tab]
-        tab = tab + 's'
-        relevant_cols = self._find_relevant_column(tab)
-        for col in relevant_cols:
-            key = self.ws.cell(row=2, column=col + 1).value
+    def _handle_location(self, data):
+        data = data['Location']
+        relevant_col = self._find_relevant_column('Location')
+        i = 1
+        for col in relevant_col:
+            col = col + i
+            self.ws.insert_cols(col)
+            self.ws.cell(row=3, column=col, value='location_id')
 
-            for row in range(4, self.ws.max_row + 1):
-                value = self.ws.cell(row=row, column=col + 1).value
-                if tab == 'Sites':
-                    id = self.ws.cell(row=row, column=52).value
-                else:
-                    id = self.ws.cell(row=row, column=14).value
+            for row in range(4, self.ws.max_row +1):
+                value = self.ws.cell(row=row, column=(col + 1)).value
+                if value is None:
+                    continue
+                self.ws.cell(row=row, column=col, value = data[value])
+        self._set_keys()
         return 0
+
+
 
     def _to_prod(self):
         self._connection.close()
         self._connection = pyodbc.connect("Driver={ODBC Driver 17 for SQL Server};"
                       "Server=RBCMIMMLIVE;"
                       "Database=Mastodon;"
-                      "UID=rbcmmastodon;"
-                      "PWD=M&lt;jkui78&amp;")
+                      "UID=appuser;"
+                      "PWD=Museum2019**;")
         self.cursor = self._connection.cursor()
         return 0, "Database connection changed to Production"
 
@@ -568,18 +667,18 @@ class ImportTools:
         self._connection.close()
         self._connection = pyodbc.connect("Driver={ODBC Driver 17 for SQL Server};"
                       "Server=RBCMIMMSTAGING;"
-                      "Database=ImportTest;"
-                      "UID=rbcmmastodon;"
-                      "PWD=M&lt;jkui78&amp;")
+                      "Database=Mastodon;"
+                      "UID=appuser;"
+                      "PWD=Museum2019**;")
         self.cursor = self._connection.cursor()
         return 0, 'Database connection changed to Test'
 
     def _import_site(self):
         # Logic for importing site data to the database
         # pub methods are for updating the progress bar
-        pub.sendMessage('UpdateMessage', arg1="Writing Sites",
-                        arg2=1,
-                        arg3=self.data_file['Site'].max_row)
+        pub.sendMessage('UpdateMessage', message="Writing Sites",
+                        update_count=1,
+                        new_max=self.data_file['Site'].max_row)
         relevant_cols = self._find_relevant_column('Sites')
         keys = {self.ws[2][col].value: self.keys[col].value 
                 for col in relevant_cols if not self.keys[col].value.startswith(
@@ -587,8 +686,8 @@ class ImportTools:
         #note_keys = {'Notes (Date)': 'GeoSiteNote.note_date', 
         #             'Notes (Note)': 'GeoSiteNote.note', 
         #             'Notes (Title)': 'GeoSiteNote.title'}
-        id_col = 'geo_site_id' if self.area_cd == 'nhist' else 'site_id'
-        table = 'GeographicSite' if self.area_cd == 'nhist' else 'ArchaeologicalSite'
+        id_col = 'geo_site_id' if self.area_cd == 'natural' else 'site_id'
+        table = 'GeographicSite' if self.area_cd == 'natural' else 'ArchaeologicalSite'
         max_query = f"Select Max(id_col) from {table}"
         max_id = self.cursor.execute(max_query).fetchone()[0]
         working_sheet = self.data_file['Site']
@@ -599,11 +698,11 @@ class ImportTools:
                     if working_sheet[row][col].value is not None}
 
             max_id += 1
-            insert_keys = 'geo_site_id, discipline_cd, ' if self.area_cd == 'nhist' \
+            insert_keys = 'geo_site_id, discipline_cd, ' if self.area_cd == 'natural' \
                 else 'site_id, borden_area, borden_site, temporary_num'
             insert_keys += ', '.join([item.split('.')[1] for item in data.keys()])
             query_part_1 = f"INSERT INTO {table}({insert_keys})"
-            if self.area_cd == 'nhist':
+            if self.area_cd == 'natural':
                 query_part_2 = f"VALUES ({max_id}, '{self.discipline}'"
             else:
                 query_part_2 = f"VALUES ({max_id}"
@@ -616,7 +715,7 @@ class ImportTools:
                     value = data[datum]
                 query_part_2 += f", {value}"
             query = query_part_1 + ' \n' + query_part_2 + ')'
-            item = data["GeographicSite.collector_site_id"] if self.area_cd == 'nhist' \
+            item = data["GeographicSite.collector_site_id"] if self.area_cd == 'natural' \
                 else data['ArchaeologicalSite.site_id']
             #if any('Notes (Date)', 'Notes (Note)', 'Notes (Title)' in data.keys()):
             #    note_query = "INSERT INTO GeoSiteNote (geo_site_id, note_date, title, note)"
@@ -624,7 +723,7 @@ class ImportTools:
             #                                         data['Notes (Date)'],
             #                                         data['Notes (Note)'],
             #                                         data['Notes (Title)'],)
-            pub.sendMessage('UpdateMessage', arg1="{} written to db".format(item))
+            pub.sendMessage('UpdateMessage', message="{} written to db".format(item))
             
             self.cursor.execute(query)
         self._set_identity_insert(table)
@@ -632,14 +731,14 @@ class ImportTools:
 
     def _import_event(self):
         # Specific logic for importing event data into the database
-        pub.sendMessage('UpdateMessage', arg1="Writing Events",
-                        arg2=1,
-                        arg3=self.data_file['Event'].max_row)
+        pub.sendMessage('UpdateMessage', message="Writing Events",
+                        update_count=1,
+                        new_max=self.data_file['Event'].max_row)
         relevant_cols = self._find_relevant_column('Events')
         keys = {self.ws[2][col].value: self.keys[col].value 
                 for col in relevant_cols}
         id_col = 'coll_event_id' if self.area_cd =='nhist' else 'event_id'
-        table = 'CollectionEvent' if self.area_cd == 'nhist' else 'ArchaeologicalCollectionEvent'
+        table = 'CollectionEvent' if self.area_cd == 'natural' else 'ArchaeologicalCollectionEvent'
         max_query = f"Select Max({id_col}) from {table}"
         max_id = self.cursor.execute(max_query).fetchone()[0]
         working_sheet = self.data_file['Event']
@@ -650,11 +749,11 @@ class ImportTools:
                     if working_sheet[row][col].value is not None}
 
             max_id += 1
-            insert_keys = 'coll_event_id, discipline_cd, ' if self.area_cd == 'nhist' \
+            insert_keys = 'coll_event_id, discipline_cd, ' if self.area_cd == 'natural' \
                 else 'event_id, '
             insert_keys += ', '.join([keys[item].split('.')[1] for item in data.keys()])
             query_part_1 = f"INSERT INTO {table}({insert_keys})"
-            if self.area_cd == 'nhist':
+            if self.area_cd == 'natural':
                 query_part_2 = f"VALUES ({max_id}, '{self.discipline}'"
             else:
                 query_part_2 = f"VALUES ({max_id}"
@@ -669,36 +768,36 @@ class ImportTools:
                 query_part_2 += ", {}".format(value)
             query = query_part_1 + ' \n' + query_part_2 + ')'
             item = data["Event Number"]
-            pub.sendMessage('UpdateMessage', arg1="{} written to db".format(item))
+            pub.sendMessage('UpdateMessage', message="{} written to db".format(item))
             self.cursor.execute(query)
         self._set_identity_insert(table)
         return 0
 
     def _import_site_event(self):
         # Specific logic for importing the linkage between sites and events
-        table = 'GeographicSite_CollectionEvent' if self.area_cd == 'nhist' \
+        table = 'GeographicSite_CollectionEvent' if self.area_cd == 'natural' \
             else 'ArchaeologicalSite_Event'
-        cols = 'geo_site_id, coll_event_id' if self.area_cd == 'nhist' \
+        cols = 'geo_site_id, coll_event_id' if self.area_cd == 'natural' \
             else 'site_id, event_id'
         site_event = []
         for row in range(4, self.ws.max_row + 1):
             site = self.ws[row][51].value
             event = self.ws[row][13].value
             site_event.append(self._query_site_event((site, event)))
-        query = f"Insert into {tables}({cols}) Values ({0}, {1})"
         site_event = set(site_event)
         for pair in site_event:
-            self.cursor.execute(query.format(pair[0], pair[1]))
+            query = f"Insert into {tables}({cols}) Values ({pair[0]}, {pair[1]})"
+            self.cursor.execute(query)
 
         return 0
 
     def _query_site_event(self, site_event: tuple):
         # Gets datbase ids for sites and events
-        site_table = 'GeographicSite' if self.area_cd == 'nhist' else 'ArchaeologicalSite'
-        site_param = 'collector_sitre_id' if self.area_cd == 'nhist' else 'temporary_num'
-        event_table = 'CollectionEvent' if self.area_cd == 'nhist' else 'ArchaeologicalCollectionEvent'
-        site_id_col = 'geo_site_id' if self.area_cd == 'nhist' else 'site_id'
-        event_id_col = 'coll_event_id' if self.area_cd == 'nhist' else 'event_id'
+        site_table = 'GeographicSite' if self.area_cd == 'natural' else 'ArchaeologicalSite'
+        site_param = 'collector_site_id' if self.area_cd == 'natural' else 'temporary_num'
+        event_table = 'CollectionEvent' if self.area_cd == 'natural' else 'ArchaeologicalCollectionEvent'
+        site_id_col = 'geo_site_id' if self.area_cd == 'natural' else 'site_id'
+        event_id_col = 'coll_event_id' if self.area_cd == 'natural' else 'event_id'
         site = site_event[0]
         event = site_event[1]
 
@@ -756,38 +855,40 @@ class ImportTools:
         # Main method for importing all data which hinges on the item_id
         # This includes all of the item tables (item, naturalhistoryitem, [discipline]item)
         # as well as taxonomy, preparation, collector, determinavit, etc. 
-        pub.sendMessage('UpdateMessage', arg1="Writing Specimens",
-                        arg2=1,
-                        arg3=self.ws.max_row)
+        pub.sendMessage('UpdateMessage', message="Writing Specimens",
+                        update_count=1,
+                        new_max=self.ws.max_row)
         events = {}
+        if self.area_cd == 'natural':
+            processes = {'item': self._write_item_query,
+                            'nhitem': self._write_nhitem_query,
+                            'disc_item': self._write_discipline_item_query,
+                            'preparation': self._write_preparation_query,
+                            'taxonomy': self._write_taxon_query,
+                            'persons': self._prep_persons,
+                            'ChemTreat': self._write_chem_query,
+                            'FieldMeas': self._write_field_query
+                        }
+        elif self.discipline != 'history':
+            processes = {'item':self._write_item_query,
+                            'hhitem': self._write_hhitem_query,
+                            'arcitem':self._write_arcitem_query,
+                            'persons':self._prep_persons
+                            }
+        else:
+            processes = {'item': self._write_item_query,
+                         'hhitem': self._write_chem_query,
+                         'location': self._write_loc_query}
         for row in range(4, self.ws.max_row + 1):
             if update is not True:
                 self.max_id += 1
             else:
                 cat_num = self.ws[row][3].value
                 self.max_id = self._get_item_id(cat_num)
-            if self.area_cd == 'nhist':
-                processes = {'item': self._write_item_query,
-                             'nhitem': self._write_nhitem_query,
-                             'disc_item': self._write_discipline_item_query,
-                             'preparation': self._write_preparation_query,
-                             'taxonomy': self._write_taxon_query,
-                             'persons': self._prep_persons,
-                             'ChemTreat': self._write_chem_query,
-                             'FieldMeas': self._write_field_query
-                         }
-            else:
-                processes = {'item':'',
-                             'hhitem':'',
-                             'arcitem':'',
-                             '':'',
-                             '':'',
-                             '':'',
-                             '':'',
-                             '':'',
-                        }
-            for process in ['item', 'nhitem', 'disc_item', 'preparation', 
-                            'ChemTreat','taxonomy', 'FieldMeas']:
+            to_do =['item', 'nhitem', 'disc_item', 'preparation', 
+                            'ChemTreat','taxonomy', 'FieldMeas'] if  self.area_cd == 'natural' \
+                                else ['item', 'hhitem', 'arcitem']
+            for process in to_do:
                 if not self._check_process(process, row):
                     continue
                 query = processes[process](row, update)
@@ -813,15 +914,15 @@ class ImportTools:
                         events[stuff[0]].extend(stuff[1])
             except NameError as e:
                 print('pause')
-            pub.sendMessage('UpdateMessage', arg1=f'{self.max_id} written to database')
+            pub.sendMessage('UpdateMessage', message=f'{self.max_id} written to database')
         return 0
 
     def write_persons_to_db(self):
-        pub.sendMessage('UpdateMessage', arg1="Writing Persons",
-                        arg2=1,
-                        arg3=self.ws.max_row)
-        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
-                        arg2=1, arg3=1)
+        pub.sendMessage('UpdateMessage', message="Writing Persons",
+                        update_count=1,
+                        new_max=self.ws.max_row)
+        pub.sendMessage('UpdateMessage', message='Setting Triggers to off',
+                        update_count=1, new_max=1)
         self._set_triggers()
 
         for row in range(4, self.ws.max_row + 1):
@@ -829,11 +930,11 @@ class ImportTools:
             if status != 0:
                 return 'ERROR!'
 
-        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
-                        arg2=1, arg3=1)
+        pub.sendMessage('UpdateMessage', message='Setting Triggers to on',
+                        update_count=1, new_max=1)
         self._set_triggers()
         self.cursor.commit()
-        pub.sendMessage('UpdateMessage', arg1='Complete!!')
+        pub.sendMessage('UpdateMessage', message='Complete!!')
         self.proc_log.append('Import Complete')
         return 0
 
@@ -1007,6 +1108,28 @@ class ImportTools:
         query = self._finalize_query(query_part_1, query_part_2.strip(', '), values, False)
         return query
 
+    def _write_location_query(self, row):
+        data_row = self.ws[row]
+        insert_keys = 'item_id, location_id, seq_num'
+        values = self._prep_location(row)
+        query_part_1 = f"Insert into ItemLocation({insert_keys})"
+        query_part_2 = f"Values({self.max_id}"
+        query = self._finalize_query(query_part_1, query_part_2, values, False)
+        return query
+
+    def _prep_location(self, row, update=False):
+        col = self._find_relevant_column('ImptLocation')
+        if not update:
+            location = {'location_id': row[col].value, 'seq_num': 0}
+        else:
+            location = {'location_id': row[col].value, 'seq_num': self._query_loc_seq_num()}
+        return locations
+        
+    def _query_loc_seq_num(self):
+        query = f"Select max(seq_num) from ItemLocation where item_id={self.max_id}"
+        result = self.cursor.execute(query).fetchone()
+        return result[0] + 1
+
     def _prep_persons(self, row):
         # Helper method for the specimen import method
         col_names = {25: 'collector',
@@ -1086,7 +1209,7 @@ class ImportTools:
                     impt_values += str(person[key]) + ', '
 
                 query_part_2 = 'Values ({})'.format(impt_values[:-2])
-                query = '{0}\n{1}'.format(query_part_1, query_part_2)
+                query = f'{query_part_2}\n{query_part_2}'
                 try:
                     self.cursor.execute(query)
                 except pyodbc.IntegrityError as e:
@@ -1107,7 +1230,7 @@ class ImportTools:
         id_types = {'collector': 'coll_event_id',
                     'determinavit': 'taxonomy_id',
                     'preparator': 'item_id'}
-        query = "Select max(seq_num) from {0} where {1} = {2}".format(type, id_types[type], id)
+        query = f"Select max(seq_num) from {type} where {id_types[type]} = {id}"
         seq_num = self.cursor.execute(query).fetchone()[0]
         if seq_num is not None:
             return seq_num + 1
@@ -1141,76 +1264,85 @@ class ImportTools:
             status = 'DISABLE'
         else:
             status = 'ENABLE'
-        query = '''{0} TRIGGER create_sname ON Taxon;
-                   {0} Trigger set_is_component on Component;
-                   {0} TRIGGER set_qualified_name ON Taxonomy;
-                   {0} TRIGGER clear_item_name ON Taxonomy;
-                   {0} TRIGGER update_person_search_name ON Person;
-                   {0} TRIGGER update_artist_search_name ON Artist;
-                   {0} TRIGGER create_sname on Taxon;
-                   {0} TRIGGER create_location_code on Location;'''.format(status)
+        query = f'''{status} TRIGGER create_sname ON Taxon;
+                   {status} Trigger set_is_component on Component;
+                   {status} TRIGGER set_qualified_name ON Taxonomy;
+                   {status} TRIGGER clear_item_name ON Taxonomy;
+                   {status} TRIGGER update_person_search_name ON Person;
+                   {status} TRIGGER update_artist_search_name ON Artist;
+                   {status} TRIGGER create_sname on Taxon;
+                   {status} TRIGGER create_location_code on Location;'''
         self.cursor.execute(query)
+        self.write_status['Triggers'] = not self.write_status['Triggers']
         return 0
 
     def write_siteevent_to_db(self):
         # Method to write just site and event data to the database (step 1 for some disciplines)
-        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
-                        arg2=1, arg3=1)
+        pub.sendMessage('UpdateMessage', message='Setting Triggers to off',
+                        update_count=2, new_max=1)
         self._set_triggers()
         self._import_site()
         self._import_event()
         self.cursor.commit()
         self._import_site_event()
-        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
-                        arg2=1, arg3=1)
+        pub.sendMessage('UpdateMessage', message='Setting Triggers to on',
+                        update_count=2, new_max=1)
         self._set_triggers()
         self.cursor.commit()
-        pub.sendMessage('UpdateMessage', arg1='Complete!!')
+        pub.sendMessage('UpdateMessage', message='Complete!!')
         self.proc_log.append('Import GeographicSite and CollectionEvent')
 
     def write_specimen_taxa_persons_to_db(self, update=False):
         # Method to write just specimen related data to the database (setp 2 for the above disciplines)
-        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
-                        arg2=1, arg3=1)
+        pub.sendMessage('UpdateMessage', message='Setting Triggers to off',
+                        update_count=2, new_max=1)
         self._set_triggers()
         self._import_specimen(update)
-        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
-                        arg2=1, arg3=1)
+        pub.sendMessage('UpdateMessage', message='Setting Triggers to on',
+                        update_count=2, new_max=1)
         self._set_triggers()
-        self.cursor.execute("exec BuildAllScientificNames @discipline_cd = '{self.discipline}'")
+        if self.area_cd == 'natural':
+            self.cursor.execute("exec BuildAllScientificNames @discipline_cd = '{self.discipline}'")
         self.cursor.commit()
-        pub.sendMessage('UpdateMessage', arg1='Complete!!')
+        pub.sendMessage('UpdateMessage', message='Complete!!')
         self.proc_log.append('Import Complete')
 
     def write_to_db(self):
         # Writes the data from the import spreadsheet to the database
-        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
-                        arg2=1, arg3=1)
-        self._set_triggers()
-        self._import_site()
-        self._import_event()
-        self._import_specimen()
-        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
-                        arg2=1, arg3=1)
-        self._set_triggers()
-        self.cursor.execute("")
-        self.cursor.execute("exec BuildAllScientificNames @discipline_cd = '{self.discipline}'")
-        self.cursor.commit()
-        pub.sendMessage('UpdateMessage', arg1='Complete!!')
+        pub.sendMessage('UpdateMessage', message='Setting Triggers to off',
+                        update_count=2, new_max=1)
+        step_dict = {'history':[self._set_triggers, self._import_specimen, self._set_triggers],
+                 'human': [self._set_triggers, self._import_site, self._import_event, 
+                           self.cursor.commit, self._import_site_event, self._import_specimen,
+                           self._set_set_triggers, self.cursor.commit],
+                 'natural': [self._set_triggers, self._import_site, self._import_event, 
+                           self.cursor.commit, self._import_site_event, self._import_specimen,
+                           self._set_set_triggers, self.cursor.commit]}
+        if self.discipline == 'history':
+            steps = step_dict['history']
+        else:
+            steps = step_dict[self.area_cd]
+
+        for step in steps:
+            step()
+        if self.area_cd == 'natural':
+            self.cursor.execute("exec BuildAllScientificNames @discipline_cd = '{self.discipline}'")
+            self.cursor.commit()
+        pub.sendMessage('UpdateMessage', message='Complete!!')
         self.proc_log.append('Import Complete')
         return 0
 
     def update_db(self):
         # Updates the data in the db to match data from the import spreadsheet 
-        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to off',
-                        arg2=1, arg3=1)
+        pub.sendMessage('UpdateMessage', message='Setting Triggers to off',
+                        update_count=2, new_max=1)
         self._set_triggers()
         self._import_specimen(update=True)
-        pub.sendMessage('UpdateMessage', arg1='Setting Triggers to on',
-                        arg2=1, arg3=1)
+        pub.sendMessage('UpdateMessage', message='Setting Triggers to on',
+                        update_count=2, new_max=1)
         self._set_triggers()
         self.cursor.commit()
-        pub.sendMessage('UpdateMessage', arg1='Complete!!')
+        pub.sendMessage('UpdateMessage', message='Complete!!')
         self.proc_log.append('Import Complete')
         return 0
 
