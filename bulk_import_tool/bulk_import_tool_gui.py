@@ -141,7 +141,7 @@ class ToolsWindow(wx.Frame):
         else:
             self.label_2.SetLabel('New Import')
 
-    def Reload(self, event):
+    def Reload(self):
         self.impt._get_file(self.impt.data_filename)
         self.impt._get_prog_info()
         self.label_2.SetLabel(self.impt.proc_log[-1])

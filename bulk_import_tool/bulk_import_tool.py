@@ -48,7 +48,9 @@ class ImportTools:
 
     def _set_max_col(self):
         if self.ws.max_column != 138 or self.ws.max_column != 29:
-            if self.ws[3][10].value.startswith('Arch'):
+            if self.ws[3][6].value.startswith('Hum'):
+                return 9
+            elif self.ws[3][10].value.startswith('Arch'):
                 return 29
             else:
                 return 138
@@ -58,7 +60,7 @@ class ImportTools:
 
     def _set_keys(self):
         # gets the spreadsheets column headers for the purpose of having keys for the dicionaries used later
-        self.keys = [self.ws[3][col] for col in range(self.max_col) if self.ws[3][col].value is not None]
+        self.keys = [self.ws[3][col].value for col in range(self.max_col) if self.ws[3][col].value is not None]
 
     def _write_prog(self):
         # Updates the progress log for the file loaded
@@ -130,6 +132,7 @@ class ImportTools:
         return persons
 
     def _find_person_query(self, name, type = 'Person' ):
+        # Return the id for various person types including Person, Artist, and Maker
         table = type
         column = f'{type}_id'
 
@@ -138,6 +141,7 @@ class ImportTools:
 
 
     def _get_full_disc(self):
+        # Returns the whole disicpline name
         disciplines = {
             'bot': 'Botany',
             'ent': 'Entomology',
@@ -180,16 +184,21 @@ class ImportTools:
                      'Material': ['Material.'],
                      'MHist': ['ModernHistoryItem.'],
                      'Location': ['Location.location_cd'],
-                     'ImptLocation':['Location.location_id']}
+                     'ImptLocation':['Location.location_id'],
+                     'OtherNumber': ['OtherNumber.']}
         table_id = table_ids[method]
 
+        if len(table_id) > 1:
+            for col in range(0, len(self.keys)):
+                if any(self.keys[col].startswith(id) for id in table_id):
+                    relevant_cols.append(col)
+        else:
+            id = table_id[0]
+            for col in range(0, len(self.keys)):
+                if self.keys[col].startswith(id):
+                    relevant_cols.append(col)
 
-        for col in range(0, len(self.keys)):
-            if any(self.keys[col].value.startswith(id) for id in table_id) \
-                    and col not in relevant_cols:
-                relevant_cols.append(col)
-
-        return relevant_cols
+        return list(set(relevant_cols))
         
     def _split_persons(self, person_names):
         # Returns the split value of person names where a delineator is present
@@ -253,27 +262,29 @@ class ImportTools:
         return taxa
 
     def _find_locations(self):
+        # Finds unique location codes then queries the database for the location_id
         max = self.ws.max_row
         pub.sendMessage('UpdateMessage', message=f'Finding unique Locations', update_count=2, new_max=max)
-        loc_col = self._find_relevant_column('Location')
+        loc_col = self._find_relevant_column('Location')[0]
         loc = {}
         loc_cds = []
         for row in range(4, self.ws.max_row + 1):
             row_data = self.ws[row]
-            loc_cds.append(row_data[loc_col])
+            loc_cds.append(row_data[loc_col].value)
         loc_cds = list(set(loc_cds))
         mess = 'Querying database for Taxa'
-        pub.sendMessage('UpdateMessage', message=mess, update_count=2, new_max=2*len(sns))
+        pub.sendMessage('UpdateMessage', message=mess, update_count=2, new_max=2*len(loc_cds))
         for cd in loc_cds:
-            loc[cd] = self._query_loc_values(cd)
-            mess = f'{sn} not found in database' if taxa[sn] == ['NEW?'] \
-                else f'{sn} found. Taxon_id: {taxa[sn]}'
+            loc[cd] = self._query_loc_id(cd)
+            mess = f'{cd} not found in database' if loc[cd] == ['NEW?'] \
+                else f'{cd} found. Location_id: {loc[cd]}'
             pub.sendMessage('UpdateMessage', message=mess)
         return loc
 
     def _query_loc_id(self, loc_cd):
-        query = f"Select location_id from Location where location_cd ='{loc_cd}'"
-        results = self.cursor.execute(query).fetchone()
+        # Queries the database for location code passed into the method.
+        query = f"Select location_id from Location where location_code ='{loc_cd}'"
+        result = self.cursor.execute(query).fetchone()
         if result != []:
             return [result[0]]
         else:
@@ -463,7 +474,7 @@ class ImportTools:
             row += 1
         return 0
 
-    def _write_locations(self, data):
+    def _write_locations(self, data, tab):
         max = len(data)
         pub.sendMessage('UpdateMessage', message=f'Writing Location', update_count=2, new_max=max)
         row = 1
@@ -474,9 +485,9 @@ class ImportTools:
                 worksheet.cell(row=row, column=col, value='Location Code')
                 worksheet.cell(row=row, column=col+1, value = 'location_id')
                 row += 1
-            else:
-                worksheet.cell(row=row, column=col, value=key)
-                worksheet.cell(row=row, column=col+1, value=data[key])
+
+            worksheet.cell(row=row, column=col, value=key)
+            worksheet.cell(row=row, column=col+1, value=data[key][0])
             row += 1
         return 0
 
@@ -574,11 +585,11 @@ class ImportTools:
                 return 1, 'Persons/Taxa has not been completed'
 
         if self.area_cd == 'natural':
-            expected = ('IMM_template', 'Person', 'Taxon')
+            expected = ['Person', 'Taxon']
         elif self.discipline == 'history':
-            expected = ('IMM_template', 'Location')
+            expected = ['Location']
         else:
-            expected = ('IMM_template', 'Person')
+            expected = ['Person']
         
         pub.sendMessage('UpdateMessage', message='Adding IDs to Spreadsheet', update_count=1, new_max=4)
         for sheet in expected:
@@ -641,13 +652,13 @@ class ImportTools:
         for col in relevant_col:
             col = col + i
             self.ws.insert_cols(col)
-            self.ws.cell(row=3, column=col, value='location_id')
+            self.ws.cell(row=3, column=col, value='Location.location_id')
 
             for row in range(4, self.ws.max_row +1):
                 value = self.ws.cell(row=row, column=(col + 1)).value
                 if value is None:
                     continue
-                self.ws.cell(row=row, column=col, value = data[value])
+                self.ws.cell(row=row, column=col, value = data[value]['location_id'])
         self._set_keys()
         return 0
 
@@ -812,7 +823,14 @@ class ImportTools:
         if not update:
             for datum in values.keys():
                 if isinstance(values[datum], str):
-                    value = f"'{values[datum]}'"
+                    if values[datum].find("'") != -1:
+                        values[datum] = values[datum].replace("'", "''")
+                    if values[datum].find('/n') == -1:
+                        value = f"'{values[datum]}'"
+                    else:
+                        temp = values[datum].split('/n')
+                        for i in range(len(temp)):
+                            value += f"'{temp[i]}' + chr(10) + chr(13)"
                 elif isinstance(values[datum], datetime):
                     value = f"'{values[datum].strftime('%Y/%m/%d')}'"
                 else:
@@ -842,9 +860,11 @@ class ImportTools:
                          'taxonomy': 'ImptTaxon',
                          'persons': 'Person',
                          'ChemTreat': 'ChemicalTreatment',
-                         'FieldMeas': 'FieldMeasurement'}
+                         'FieldMeas': 'FieldMeasurement',
+                         'hhitem': 'HHItem',
+                         'location': 'ImptLocation'}
         relevant_cols = self._find_relevant_column(processes[process])
-        values = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+        values = {self.keys[col][self.keys[col].find('.') + 1:]: row[col].value 
                 for col in relevant_cols if row[col].value is not None} 
         if values == {}:
             return False
@@ -867,27 +887,33 @@ class ImportTools:
                             'taxonomy': self._write_taxon_query,
                             'persons': self._prep_persons,
                             'ChemTreat': self._write_chem_query,
-                            'FieldMeas': self._write_field_query
+                            'FieldMeas': self._write_field_query,
+                            'OtherNum': self._write_other_num_query
                         }
         elif self.discipline != 'history':
             processes = {'item':self._write_item_query,
                             'hhitem': self._write_hhitem_query,
                             'arcitem':self._write_arcitem_query,
-                            'persons':self._prep_persons
+                            'persons':self._prep_persons,
+                            'OtherNum': self._write_other_num_query
                             }
         else:
             processes = {'item': self._write_item_query,
-                         'hhitem': self._write_chem_query,
-                         'location': self._write_loc_query}
+                         'hhitem': self._write_hhitem_query,
+                         'location': self._write_location_query}
         for row in range(4, self.ws.max_row + 1):
             if update is not True:
                 self.max_id += 1
             else:
                 cat_num = self.ws[row][3].value
                 self.max_id = self._get_item_id(cat_num)
-            to_do =['item', 'nhitem', 'disc_item', 'preparation', 
-                            'ChemTreat','taxonomy', 'FieldMeas'] if  self.area_cd == 'natural' \
-                                else ['item', 'hhitem', 'arcitem']
+            if  self.area_cd == 'natural':
+                to_do = ['item', 'nhitem', 'disc_item', 'preparation', 
+                            'ChemTreat','taxonomy', 'FieldMeas'] 
+            elif self.discipline != 'history':
+               to_do = ['item', 'hhitem', 'arcitem']
+            else:
+                to_do = ['item', 'hhitem', 'location']
             for process in to_do:
                 if not self._check_process(process, row):
                     continue
@@ -897,23 +923,25 @@ class ImportTools:
                 try:
                     self.cursor.execute(query)
                 except pyodbc.IntegrityError as e:
-                    print('pause')
+                    print(e)
+                    return 1
 
                 except pyodbc.ProgrammingError as e:
+                    print(e)
+                    return 1
+            if self.discipline != 'history':
+                event_num = self._query_site_event((self.ws[row][51].value, self.ws[row][13].value))[1]
+                person_id = self.ws[row][24].value
+                try:
+                    if event_num not in events.keys() \
+                        or person_id not in events[event_num]:
+                        if event_num not in events.keys():
+                            events[event_num] = []
+                        status, stuff = self._import_person(row)
+                        if stuff != []:
+                            events[stuff[0]].extend(stuff[1])
+                except NameError as e:
                     print('pause')
-
-            event_num = self._query_site_event((self.ws[row][51].value, self.ws[row][13].value))[1]
-            person_id = self.ws[row][24].value
-            try:
-                if event_num not in events.keys() \
-                    or person_id not in events[event_num]:
-                    if event_num not in events.keys():
-                        events[event_num] = []
-                    status, stuff = self._import_person(row)
-                    if stuff != []:
-                        events[stuff[0]].extend(stuff[1])
-            except NameError as e:
-                print('pause')
             pub.sendMessage('UpdateMessage', message=f'{self.max_id} written to database')
         return 0
 
@@ -951,13 +979,14 @@ class ImportTools:
     def _prep_item(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('Item')
-        item = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+        item = {self.keys[col][self.keys[col].find('.') + 1:]: row[col].value 
                 for col in relevant_cols if row[col].value is not None}
         return item
 
     def _write_insert(self, table, insert_keys):
         formats = {'item': {'table_name': 'Item', 'format': f"{self.max_id}, 'catalog', '{self.area_cd}'"},
                    'nhitem':{'table_name':'NaturalHistoryItem', 'format':f"{self.max_id}, '{self.discipline}'"},
+                   'hhitem':{'table_name':'HumanHistoryItem', 'format':f"{self.max_id}, '{self.discipline}'"},
                    'discitem': {'table_name': '{self._get_full_disc()}Item', format: f"VALUES({self.max_id}"}}
         query_part_1 = f"Insert into {formats[table]['table_name']} ({insert_keys})"
         query_part_2 = f"VALUES ({formats[table]['format']}"
@@ -970,6 +999,10 @@ class ImportTools:
                     'offset': 3},
                    'nhitem':
                    {'table_name':'NaturalHistoryItem', 
+                    'format': f"set discipline_cd = '{self.discipline}', ",
+                    'offset': 2},
+                    'hhitem':
+                    {'table_name':'HumanHistoryItem', 
                     'format': f"set discipline_cd = '{self.discipline}', ",
                     'offset': 2},
                    'discitem': {'table_name': f'{self._get_full_disc()}Item', 'format':"set ",
@@ -998,10 +1031,30 @@ class ImportTools:
         query = self._finalize_query(query_part_1, query_part_2, values, update)
         return query
 
+    def _write_hhitem_query(self, row_num, update=False):
+        data_row = self.ws[row_num]
+        insert_keys = 'item_id, discipline_cd, '
+        values = self._prep_hhitem(data_row)
+        insert_keys += ', '.join([item for item in values.keys()])
+        if not update:
+            query_part_1, query_part_2 = self._write_insert('hhitem', insert_keys)
+        else:
+            query_part_1, query_part_2 = self._write_update('hhitem', insert_keys)
+        query = self._finalize_query(query_part_1 ,query_part_2, values, update)
+        
+        return query
+
+    def _prep_hhitem(self, row):
+        relevant_cols = self._find_relevant_column('HHItem')
+        hhitem = {self.keys[col][self.keys[col].find('.') + 1: ]: row[col].value
+                  for col in relevant_cols if row[col].value is not None}
+
+        return hhitem
+
     def _prep_nhitem(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('NHItem')
-        nhitem = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+        nhitem = {self.keys[col][self.keys[col].find('.') + 1:]: row[col].value 
                 for col in relevant_cols if row[col].value is not None}
         site, event = self._query_site_event((row[51].value, row[13].value))
         nhitem['coll_event_id'] = event
@@ -1108,27 +1161,40 @@ class ImportTools:
         query = self._finalize_query(query_part_1, query_part_2.strip(', '), values, False)
         return query
 
-    def _write_location_query(self, row):
+    def _write_location_query(self, row, update=False):
         data_row = self.ws[row]
-        insert_keys = 'item_id, location_id, seq_num'
-        values = self._prep_location(row)
+        insert_keys = 'item_id, status, location_id, seq_num'
+        values = self._prep_location(data_row)
         query_part_1 = f"Insert into ItemLocation({insert_keys})"
-        query_part_2 = f"Values({self.max_id}"
+        query_part_2 = f"Values({self.max_id}, 1"
         query = self._finalize_query(query_part_1, query_part_2, values, False)
         return query
 
     def _prep_location(self, row, update=False):
-        col = self._find_relevant_column('ImptLocation')
+        col = self._find_relevant_column('ImptLocation')[0]
         if not update:
             location = {'location_id': row[col].value, 'seq_num': 0}
         else:
-            location = {'location_id': row[col].value, 'seq_num': self._query_loc_seq_num()}
-        return locations
+            location = {'location_id': row[col].value, 'seq_num': self._query_seq_num('ItemLocation')}
+        return location
         
-    def _query_loc_seq_num(self):
-        query = f"Select max(seq_num) from ItemLocation where item_id={self.max_id}"
+    def _query_seq_num(self, table):
+        query = f"Select max(seq_num) from {table} where item_id={self.max_id}"
         result = self.cursor.execute(query).fetchone()
         return result[0] + 1
+
+    def _write_other_num_query(self, row):
+        insert_keys = 'item_id, identifier, seq_num, num_type_cd'
+        values = self._prep_other_num(row)
+        query_part_1 = f'Insert into OtherNumber({insert_keys})'
+        query_part_2 = f'Values({self.max_id}'
+        query = self._finalize_query(query_part_1, query_part_2, values, False)
+        return query
+
+    def _prep_other_num(self, row):
+        col = self._find_relevant_column('OtherNumber')
+        values = {'identifier': row[col].value, 'seq_num': self._query_seq_num('OtherNumber'), 'num_type_cd': 'previous'}
+        return values
 
     def _prep_persons(self, row):
         # Helper method for the specimen import method
@@ -1314,10 +1380,10 @@ class ImportTools:
         step_dict = {'history':[self._set_triggers, self._import_specimen, self._set_triggers],
                  'human': [self._set_triggers, self._import_site, self._import_event, 
                            self.cursor.commit, self._import_site_event, self._import_specimen,
-                           self._set_set_triggers, self.cursor.commit],
+                           self._set_triggers, self.cursor.commit],
                  'natural': [self._set_triggers, self._import_site, self._import_event, 
                            self.cursor.commit, self._import_site_event, self._import_specimen,
-                           self._set_set_triggers, self.cursor.commit]}
+                           self._set_triggers, self.cursor.commit]}
         if self.discipline == 'history':
             steps = step_dict['history']
         else:
@@ -1327,7 +1393,7 @@ class ImportTools:
             step()
         if self.area_cd == 'natural':
             self.cursor.execute("exec BuildAllScientificNames @discipline_cd = '{self.discipline}'")
-            self.cursor.commit()
+        self.cursor.commit()
         pub.sendMessage('UpdateMessage', message='Complete!!')
         self.proc_log.append('Import Complete')
         return 0
@@ -1344,7 +1410,4 @@ class ImportTools:
         self.cursor.commit()
         pub.sendMessage('UpdateMessage', message='Complete!!')
         self.proc_log.append('Import Complete')
-        return 0
-
-    def write_humanhist_to_db(self):
         return 0
