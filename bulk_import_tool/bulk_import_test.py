@@ -13,6 +13,7 @@ class BulkImportTest(unittest.TestCase):
         self.impt._get_file(file_name)
         self.impt._get_prog_info()
         self.impt.discipline = 'inv'
+        self.impt.area_cd = 'natural'
         self.maxDiff = None
     
     def test_find_persons(self):

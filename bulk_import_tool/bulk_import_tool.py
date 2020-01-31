@@ -3,7 +3,7 @@ import openpyxl
 from pubsub import pub
 from datetime import datetime
 
-# Tools for the Bulk Import of Natural History Specimens
+# Tools for the Bulk Import of Royal BC Museum Specimens
 
 
 class ImportTools:
@@ -24,7 +24,6 @@ class ImportTools:
         self.keys = None
         self.max_id = self._query_item_id()
         self.max_col = None
-        ## self.max_col = 138 actual value
         self.write_status = {'ArchaeologicalSite': False,
                              'ArchaeologicalCollectionEvent': False,
                              'GeographicSite': False, 
@@ -302,19 +301,23 @@ class ImportTools:
         keys = self.ws[2]
         generated_sites = {}
         for row in range(4, self.ws.max_row + 1):
+            if self.ws[row][self.keys.index(site_type)].value is not None:
+                msg = f'Skipping {self.ws[row][self.keys.index(site_type)].value} as it already exists'
+                pub.sendMessage('UpdateMessage', message=msg)
+                continue
             if generated_sites == {}:
                 new_site_id[1] = str(int(new_site_id[1]) + 1)
                 site_id = new_site_id[0] + new_site_id[1]
                 generated_sites[site_id] = {}
                 for index in relevant_cols:
-                    generated_sites[site_id][self.keys[index].value] = self.ws[row][index].value
+                    generated_sites[site_id][self.keys[index]] = self.ws[row][index].value
                 generated_sites[site_id][site_type] = site_id
                 self.ws.cell(row=row, column=51, value=site_id)
             else:
                 site = {}
                 unique = 1
                 for index in relevant_cols:
-                    site[self.keys[index].value] = self.ws[row][index].value
+                    site[self.keys[index]] = self.ws[row][index].value
                 for item in generated_sites.keys():
                     item_site = generated_sites[item].copy()
                     item_site['GeographicSite.collector_site_id'] = None
@@ -379,7 +382,12 @@ class ImportTools:
         new_event_id = self._get_max_event_id()
         relevant_cols = self._find_relevant_column('Events')
         self.keys = self.ws[2]
+        exit_key = [i for i in range(self.ws.max_column) if self.ws[2][i].value == 'Event Number'][0]
         for row in range(4, self.ws.max_row + 1):
+            if self.ws[row][exit_key].value is not None:
+                msg = f'Skipping {self.ws[row][exit_key].value} as it already exists'
+                pub.sendMessage('UpdateMessage', message=msg)
+                continue
             working_row = self.ws[row]
             if generated_events == {}:
                 new_event_id[1] = str(int(new_event_id[1]) + 1)
@@ -421,20 +429,23 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', message=f'Writing {section}', update_count=2, new_max=max)
         # Writes persons and taxa to spreadsheet
         row = 1
-        col = 'A'
+        col = 1
         work_sheet = self.data_file[section]
-        sheet_ref = chr(ord(col)) + str(row)
-        work_sheet[sheet_ref] = section
-        sheet_ref = chr(ord(col) + 1) + str(row)
-        work_sheet[sheet_ref] = section + '_ids'
+        work_sheet.cell(row=row, column=col, value = section)
+        work_sheet.cell(row=row, column=col + 1, value = f'{section}_ids')
         row += 1
         for key in data.keys():
             pub.sendMessage('UpdateMessage', message = f'Writing {key} to Spreadsheet')
-            sheet_ref = col + str(row)
-            work_sheet[sheet_ref] = key
+            work_sheet.cell(row=row, column=col, value=key)
+                
             for i in range(len(data[key])):
-                sheet_ref = chr(ord(col) + 1 + i) + str(row)
-                work_sheet[sheet_ref] = data[key][i]
+                try:
+                    work_sheet.cell(row=row, column=(col+1+i), value = data[key][i])
+                except ValueError as e:
+                    Msg = f"Col: {col},\nRow: {row},\nSheet Reference: {sheet_ref},\nData: {data[key]},\ni: {i}"
+                    print(Msg)
+                    print(e)
+                    return 1
             row += 1
         return 0
 
@@ -514,7 +525,12 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', message='Writing Spreadsheet', update_count=1, new_max=4)
         for tab in tabs.keys():
             data = tabs[tab][0]()
-            tabs[tab][1](data, tab)
+            if data == {}:
+                continue
+            return_value = tabs[tab][1](data, tab)
+            if return_value == 1:
+                return 1
+            
             pub.sendMessage('UpdateMessage', message=f"{tab}s Complete")
 
         self.data_file.save(self.data_filename)
@@ -682,6 +698,7 @@ class ImportTools:
                       "UID=appuser;"
                       "PWD=Museum2019**;")
         self.cursor = self._connection.cursor()
+        self.max_id = self._query_item_id()
         return 0, 'Database connection changed to Test'
 
     def _import_site(self):
@@ -691,15 +708,15 @@ class ImportTools:
                         update_count=1,
                         new_max=self.data_file['Site'].max_row)
         relevant_cols = self._find_relevant_column('Sites')
-        keys = {self.ws[2][col].value: self.keys[col].value 
-                for col in relevant_cols if not self.keys[col].value.startswith(
+        keys = {self.ws[2][col].value: self.keys[col] 
+                for col in relevant_cols if not self.keys[col].startswith(
                     'GeoSiteNote')}
         #note_keys = {'Notes (Date)': 'GeoSiteNote.note_date', 
         #             'Notes (Note)': 'GeoSiteNote.note', 
         #             'Notes (Title)': 'GeoSiteNote.title'}
         id_col = 'geo_site_id' if self.area_cd == 'natural' else 'site_id'
         table = 'GeographicSite' if self.area_cd == 'natural' else 'ArchaeologicalSite'
-        max_query = f"Select Max(id_col) from {table}"
+        max_query = f"Select Max({id_col}) from {table}"
         max_id = self.cursor.execute(max_query).fetchone()[0]
         working_sheet = self.data_file['Site']
         self._set_identity_insert(table)
@@ -746,9 +763,9 @@ class ImportTools:
                         update_count=1,
                         new_max=self.data_file['Event'].max_row)
         relevant_cols = self._find_relevant_column('Events')
-        keys = {self.ws[2][col].value: self.keys[col].value 
+        keys = {self.ws[2][col].value: self.keys[col]
                 for col in relevant_cols}
-        id_col = 'coll_event_id' if self.area_cd =='nhist' else 'event_id'
+        id_col = 'coll_event_id' if self.area_cd =='natural' else 'event_id'
         table = 'CollectionEvent' if self.area_cd == 'natural' else 'ArchaeologicalCollectionEvent'
         max_query = f"Select Max({id_col}) from {table}"
         max_id = self.cursor.execute(max_query).fetchone()[0]
@@ -930,14 +947,16 @@ class ImportTools:
                     print(e)
                     return 1
             if self.discipline != 'history':
-                event_num = self._query_site_event((self.ws[row][51].value, self.ws[row][13].value))[1]
+                site_id = self.keys.index('GeographicSite.collector_site_id')
+                event_id = self.keys.index('CollectionEvent.event_num')
+                event_num = self._query_site_event((self.ws[row][site_id].value, self.ws[row][event_id].value))[1]
                 person_id = self.ws[row][24].value
                 try:
                     if event_num not in events.keys() \
                         or person_id not in events[event_num]:
                         if event_num not in events.keys():
                             events[event_num] = []
-                        status, stuff = self._import_person(row)
+                        status, stuff = self._import_person(row, event_num)
                         if stuff != []:
                             events[stuff[0]].extend(stuff[1])
                 except NameError as e:
@@ -987,7 +1006,7 @@ class ImportTools:
         formats = {'item': {'table_name': 'Item', 'format': f"{self.max_id}, 'catalog', '{self.area_cd}'"},
                    'nhitem':{'table_name':'NaturalHistoryItem', 'format':f"{self.max_id}, '{self.discipline}'"},
                    'hhitem':{'table_name':'HumanHistoryItem', 'format':f"{self.max_id}, '{self.discipline}'"},
-                   'discitem': {'table_name': '{self._get_full_disc()}Item', format: f"VALUES({self.max_id}"}}
+                   'discitem': {'table_name': f'{self._get_full_disc()}Item', 'format': f"{self.max_id}"}}
         query_part_1 = f"Insert into {formats[table]['table_name']} ({insert_keys})"
         query_part_2 = f"VALUES ({formats[table]['format']}"
         return query_part_1, query_part_2
@@ -1044,6 +1063,18 @@ class ImportTools:
         
         return query
 
+    def _write_arcitem_query(self, row_num, update=False):
+        data_row = self.ws[row_num]
+        insert_keys = 'item_id, '
+        values = self._prep_arcitem(data_row)
+        insert_keys += ', '.join([item for item in values.keys()])
+        if not update:
+            query_part_1, query_part_2 = self._write_insert('arcitem', insert_keys)
+        else:
+            query_part_1, query_part_2 = self._write_update('arcitem', insert_keys)
+        query = self._finalize_query(query_part_1 ,query_part_2, values, update)
+        return query
+
     def _prep_hhitem(self, row):
         relevant_cols = self._find_relevant_column('HHItem')
         hhitem = {self.keys[col][self.keys[col].find('.') + 1: ]: row[col].value
@@ -1051,12 +1082,21 @@ class ImportTools:
 
         return hhitem
 
+    def _prep_arcitem(self, row):
+        relevant_cols = self._find_relevant_column('ArcItem')
+        arcitem = {self.keys[col][self.keys[col].find('.') + 1: ]: row[col].value
+                   for col in relevant_cols if row[col].value is not None}
+
+        return arcitem
+
     def _prep_nhitem(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('NHItem')
         nhitem = {self.keys[col][self.keys[col].find('.') + 1:]: row[col].value 
                 for col in relevant_cols if row[col].value is not None}
-        site, event = self._query_site_event((row[51].value, row[13].value))
+        site_id = self.keys.index('GeographicSite.collector_site_id')
+        event_id = self.keys.index('CollectionEvent.event_num')
+        site, event = self._query_site_event((row[site_id].value, row[event_id].value))
         nhitem['coll_event_id'] = event
         nhitem['geo_site_id'] = site
         return nhitem
@@ -1076,7 +1116,7 @@ class ImportTools:
     def _prep_discipline_item(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('DisciplineItem')
-        disc_item = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+        disc_item = {self.keys[col][self.keys[col].find('.') + 1:]: row[col].value 
                 for col in relevant_cols if row[col].value is not None}
         return disc_item
 
@@ -1095,7 +1135,7 @@ class ImportTools:
     def _prep_preparation(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('Preparation')
-        item = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+        item = {self.keys[col][self.keys[col].find('.') + 1:]: row[col].value 
                 for col in relevant_cols if row[col].value is not None}
         return item
 
@@ -1112,7 +1152,7 @@ class ImportTools:
     def _prep_taxon(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('ImptTaxon')
-        taxon = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+        taxon = {self.keys[col][self.keys[col].find('.') + 1:]: row[col].value 
                 for col in relevant_cols if row[col].value is not None}
         return taxon
 
@@ -1130,7 +1170,7 @@ class ImportTools:
 
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('ChemicalTreatment')
-        chemical_treatment = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+        chemical_treatment = {self.keys[col][self.keys[col].find('.') + 1:]: row[col].value 
                 for col in relevant_cols if row[col].value is not None}
         return chemical_treatment
 
@@ -1147,7 +1187,7 @@ class ImportTools:
     def _prep_field_measurement(self, row):
         # Helper method for the specimen import method
         relevant_cols = self._find_relevant_column('FieldMeasurement')
-        field_measurement = {self.keys[col].value[self.keys[col].value.find('.') + 1:]: row[col].value 
+        field_measurement = {self.keys[col][self.keys[col].find('.') + 1:]: row[col].value 
                 for col in relevant_cols if row[col].value is not None}
         return field_measurement
 
@@ -1196,10 +1236,10 @@ class ImportTools:
         values = {'identifier': row[col].value, 'seq_num': self._query_seq_num('OtherNumber'), 'num_type_cd': 'previous'}
         return values
 
-    def _prep_persons(self, row):
+    def _prep_persons(self, row, event_num):
         # Helper method for the specimen import method
         col_names = {25: 'collector',
-                81: 'determinavit',
+                82: 'determinavit',
                 123: 'preparator'}
         persons = {'collector': [],
                    'determinavit': [],
@@ -1213,8 +1253,7 @@ class ImportTools:
                 for person in row[col_num - 1].value.split('; '):
                     person_data = {key + '_pid': person}
                     if key == 'collector':
-                        coll_event_id = self._query_site_event((row[51].value, row[13].value))[1]
-                        if self._person_exists(key, coll_event_id, person):
+                        if self._person_exists(key, event_num, person):
                             continue
                         person_data['coll_event_id'] = coll_event_id
                         person_data['seq_num'] = self._check_person(key, coll_event_id) + i
@@ -1234,8 +1273,7 @@ class ImportTools:
                 person_data = {key + '_pid': row[col_num - 1].value}
                 person = row[col_num - 1].value
                 if key == 'collector':
-                    coll_event_id = self._query_site_event((row[51].value, row[13].value))[1]
-                    if self._person_exists(key, coll_event_id, person):
+                    if self._person_exists(key, event_num, person):
                         continue
                     person_data['coll_event_id'] = coll_event_id
                     person_data['seq_num'] = self._check_person(key, coll_event_id)
@@ -1259,11 +1297,11 @@ class ImportTools:
         value = self.cursor.execute(query).fetchone()[0]
         return value
 
-    def _import_person(self, row_num):
+    def _import_person(self, row_num, event_num):
         # Helper method for the specimen import method
         # imports person data (collector, determinavit, preparator)
         data_row = self.ws[row_num]
-        values = self._prep_persons(data_row)
+        values = self._prep_persons(data_row, event_num)
         for table in values.keys():
             if values[table] is []:
                 continue
@@ -1274,8 +1312,8 @@ class ImportTools:
                 for key in keys.split(', '):
                     impt_values += str(person[key]) + ', '
 
-                query_part_2 = 'Values ({})'.format(impt_values[:-2])
-                query = f'{query_part_2}\n{query_part_2}'
+                query_part_2 = f'Values ({impt_values[:-2]})'
+                query = f'{query_part_1}\n{query_part_2}'
                 try:
                     self.cursor.execute(query)
                 except pyodbc.IntegrityError as e:

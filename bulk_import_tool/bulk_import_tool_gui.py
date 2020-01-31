@@ -58,7 +58,8 @@ class ToolsWindow(wx.Frame):
                                                             "Indigenous Collections", 
                                                             "Invertebrate Zoology",
                                                             "Mammalogy", "Modern History",
-                                                            "Ornithology"])
+                                                            "Ornithology",
+                                                            "Paleontology"])
         self.button_3 = wx.Button(self, wx.ID_ANY, "Set Discipline")
         self.button_6 = wx.Button(self, wx.ID_ANY, "Write Spreadsheet")
         self.button_7 = wx.Button(self, wx.ID_ANY, "Add IDs")
@@ -169,6 +170,11 @@ class ToolsWindow(wx.Frame):
             if write == 0:
                 dialog = wx.MessageBox('Writing Spread sheet is complete', 'Info', 
                               wx.OK | wx.ICON_INFORMATION)
+            else:
+                dialog = wx.MessageBox('Writing Spreadsheet failed', 'Error',
+                                       wx.OK|wx.ICON_ERROR)
+                self.Reload()
+                event.Skip()
         self.impt._write_prog()
         self.Reload()
         event.Skip()
