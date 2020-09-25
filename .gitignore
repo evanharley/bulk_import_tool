@@ -268,3 +268,7 @@ __pycache__/
 /bulk_import_tool/bulk_import_tool_gui.wxg
 /bulk_import_tool/_test.xlsx
 *.xlsx
+/bulk_import_tool/Unneeded Files
+/bulk_import_tool/output
+/bulk_import_tool/dist
+/bulk_import_tool/build/bulk_import_tool_gui

@@ -15,7 +15,7 @@ class ImportToolsProgressDialog(wx.ProgressDialog):
     '''Progress Dialog box'''
     def __init__(self):
         """Constructor"""
-        wx.ProgressDialog.__init__(self, "Processing", "Please wait...")
+        wx.ProgressDialog.__init__(self, "Processing", "Please wait...", style=wx.PD_APP_MODAL|wx.PD_AUTO_HIDE)
         self.SetSize((800, 400))
         self.count = 0 
         # create a pubsub receiver
@@ -135,12 +135,8 @@ class ToolsWindow(wx.Frame):
         file_dialog.Center()
         file_dialog.ShowModal()
         self.impt._get_file(file_dialog.GetPath())
-        self.impt._get_prog_info()
         file_dialog.Destroy()
-        if self.impt.proc_log != []:
-            self.label_2.SetLabel(self.impt.proc_log[-1])
-        else:
-            self.label_2.SetLabel('New Import')
+        self.label_2.SetLabel(self.impt.proc_log[-1])
 
     def Reload(self):
         self.impt._get_file(self.impt.data_filename)
@@ -240,6 +236,7 @@ class ToolsWindow(wx.Frame):
         if status != 0:
             wx.MessageBox(status, "ERROR!", wx.OK | wx.ICON_ERROR)
             return 0
+        prg_dlg.Destroy()
         self.impt._write_prog()
         self.Reload()
         event.Skip()

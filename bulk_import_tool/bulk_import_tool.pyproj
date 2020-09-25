@@ -11,6 +11,7 @@
     <OutputPath>.</OutputPath>
     <Name>bulk_import_tool</Name>
     <RootNamespace>bulk_import_tool</RootNamespace>
+    <InterpreterId>CondaEnv|CondaEnv|BulkImportTool</InterpreterId>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -26,6 +27,9 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="bulk_import_tool_gui.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <InterpreterReference Include="CondaEnv|CondaEnv|BulkImportTool" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in

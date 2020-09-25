@@ -17,10 +17,16 @@ class BulkImportTest(unittest.TestCase):
         self.maxDiff = None
     
     def test_find_persons(self):
-        value = self.impt._find_persons()
+        value = self.impt._find_person_organization(type="Person")
         test_values = {'Hugh MacIntosh': [6755], 'Evan Harley': [6168],
                        'Meg Sugrue': [16213], 'David Stewart': ['NEW?'],
                        'Henry Choong': [2767, 4659], 'Heidi Gartner': [2430, 4829]}
+        self.assertEqual(test_values, value)
+
+
+    def test_find_organization(self):
+        value = self.impt._find_person_organization(type="Organization")
+        test_values = {'Washington Department of Fish and Wildlife': [130]}
         self.assertEqual(test_values, value)
 
     def test_find_relevant_column(self):
@@ -184,10 +190,11 @@ class BulkImportTest(unittest.TestCase):
         self.fail("Not Implemented")
 
     def test_import_geographic_sites(self):
+        self.impt._to_test()
         self.impt._import_site()
         query = 'Select * from GeographicSite' +\
                 'where geo_site_id = (select max(geo_site_id) from GeographicSite'
-        values = self.impt.cursor(query).fetchone()
+        values = self.impt.cursor.execute(query).fetchone()
         test_values = []
         self.assertEqual(test_values, values)
 
@@ -330,6 +337,18 @@ class BulkImportTest(unittest.TestCase):
            "VALUES (2000000, 'catalog', '', 'TEST_CN_01', 'Test item 1')" 
                 
         self.assertEqual(test_result, result)
+
+
+    def test_get_person_org_colnames(self):
+        test_vals = self.impt._get_person_org_colnames()
+        vals = {}
+        self.assertDictEqual()
+
+    def test_prep_persons(self):
+        row = self.impt.ws[4]
+        test_vals = self.impt._prep_persons(row, 1)
+        vals = {}
+        self.assertEqual(test_vals, vals)
 
 
 if __name__ == '__main__':
