@@ -146,6 +146,10 @@ class ToolsWindow(wx.Frame):
 
     def set_discipline(self, event):  # wxGlade: tools_window.<event_handler>
         self.impt.discipline = self.choice_1.StringSelection[:3].lower()
+        if self.impt.discipline == '':
+            err_dlg = wx.MessageBox('Discipline not selected', 
+                                    'ERROR!!', wx.OK | wx.ICON_ERROR)
+            return 0
         if self.impt.discipline in ['bot', 'ent', 'geo', 'her', 'ich', 'inv', 'mam', 'orn', 'pal']:
             self.impt.area_cd = 'natural'
         else:

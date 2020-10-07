@@ -197,7 +197,7 @@ class ImportTools:
 
         if len(table_id) > 1:
             for key, value in self.keys.items():
-                if any([value.startswit(id) for id in table_id]):
+                if any([value.startswith(id) for id in table_id]):
                        relevant_cols.append(key)
                 
         else:
@@ -266,12 +266,7 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', message=f'Finding unique Locations', update_count=2, new_max=max)
         loc_col = self._find_relevant_column('Location')[0]
         loc = {}
-        loc_cds = []
-        for row in range(4, self.ws.max_row + 1):
-            row_data = self.ws[row]
-            if row_data[loc_col].value is not None:
-                loc_cds.append(row_data[loc_col].value)
-        loc_cds = list(set(loc_cds))
+        loc_cds = list(self.ws[loc_col].unique())
         mess = 'Querying database for Locations'
         pub.sendMessage('UpdateMessage', message=mess, update_count=2, new_max=2*len(loc_cds))
         for cd in loc_cds:
@@ -299,48 +294,13 @@ class ImportTools:
         site_type = area_dict[self.area_cd]
         new_site_id = self._get_max_site_id()
         relevant_cols = self._find_relevant_column('Sites')
-        keys = self.ws[2]
-        generated_sites = {}
-        site_col = self.keys.index(site_type)
-        for row in range(4, self.ws.max_row + 1):
-            if self.ws[row][self.keys.index(site_type)].value is not None:
-                msg = f'Skipping {self.ws[row][self.keys.index(site_type)].value} as it already exists'
-                pub.sendMessage('UpdateMessage', message=msg)
-                continue
-            if generated_sites == {}:
-                new_site_id[1] = str(int(new_site_id[1]) + 1)
-                site_id = new_site_id[0] + new_site_id[1]
-                generated_sites[site_id] = {}
-                for index in relevant_cols:
-                    generated_sites[site_id][self.keys[index]] = self.ws[row][index].value
-                generated_sites[site_id][site_type] = site_id
-                self.ws.cell(row=row, column=site_col, value=site_id)
-            else:
-                site = {}
-                unique = 1
-                for index in relevant_cols:
-                    site[self.keys[index]] = self.ws[row][index].value
-                for item in generated_sites.keys():
-                    item_site = generated_sites[item].copy()
-                    item_site['GeographicSite.collector_site_id'] = None
-                    if site != item_site:
-                        continue
-                    else:
-                        unique = 0
-                        matching_id = item
-                        break
-                    del item_site
-                if unique == 1:
-                    new_site_id[1] = str(int(new_site_id[1]) + 1)
-                    site_id = new_site_id[0] + new_site_id[1]
-                    generated_sites[site_id] = site
-                    self.ws.cell(row=row, column=site_col, value=site_id)
-                    generated_sites[site_id][site_type] = site_id
-                    pub.sendMessage('UpdateMessage', message = f'{site_id} Generated!')
-                else:
-                    self.ws.cell(row=row, column=site_col, value=matching_id)
-                    pub.sendMessage('UpdateMessage', message= f'Record belongs to {site_id}')
-            
+        working_sheet = self.ws.copy()
+        working_sheet = working_sheet[relevant_cols]
+        cols_with_variation = {col: working_sheet[col].nunique() for col in relevant_cols if working_sheet[col].nunique() > 0}
+        generated_sites = working_sheet[working_sheet.duplicated(subset = cols_with_variation, keep='first')]
+        site_col = next((key for key, value in self.keys.items() if value == site_type))
+        site_numbers = [f'{new_site_id[0]}{str(int(new_site_id[1])+i)}' for i in range(len(generated_sites))]
+        generated_sites[site_col] = site_numbers
         return generated_sites
 
     def _get_max_site_id(self):
@@ -379,51 +339,15 @@ class ImportTools:
     def _generate_events(self):
         # Generates new collection events for import, from the unique events in the import spreadsheet
         generated_events = {}
-        max = self.ws.max_row
         pub.sendMessage('UpdateMessage', message=f'Finding unique Events', update_count=2, new_max=max)
         new_event_id = self._get_max_event_id()
         relevant_cols = self._find_relevant_column('Events')
-        self.keys = self.ws[2]
-        exit_key = [i for i in range(self.ws.max_column) if self.ws[2][i].value == 'Event Number'][0]
-        for row in range(4, self.ws.max_row + 1):
-            if self.ws[row][exit_key].value is not None:
-                msg = f'Skipping {self.ws[row][exit_key].value} as it already exists'
-                pub.sendMessage('UpdateMessage', message=msg)
-                continue
-            working_row = self.ws[row]
-            if generated_events == {}:
-                new_event_id[1] = str(int(new_event_id[1]) + 1)
-                event_id = new_event_id[0] + new_event_id[1]
-                generated_events[event_id] = {}
-                for index in relevant_cols:
-                    generated_events[event_id][self.keys[index].value] = working_row[index].value
-                generated_events[event_id]["Event Number"] = event_id
-                self.ws.cell(row=row, column=14, value=event_id)
-            else:
-                event = {}
-                unique = 1
-                for index in relevant_cols:
-                    event[self.keys[index].value] = working_row[index].value
-                for item in generated_events.keys():
-                    item_event = generated_events[item].copy()
-                    item_event['Event Number'] = None
-                    if event != item_event:
-                        continue
-                    else:
-                        unique = 0
-                        matching_id = item
-                        break
-                if unique == 1:
-                    new_event_id[1] = str(int(new_event_id[1]) + 1)
-                    event_id = new_event_id[0] + new_event_id[1]
-                    generated_events[event_id] = event
-                    self.ws.cell(row=row, column=14, value=event_id)
-                    generated_events[event_id]["Event Number"] = event_id
-                    pub.sendMessage('UpdateMessage', message = f'{event_id} Generated!')
-                else:
-                    self.ws.cell(row=row, column=14, value=matching_id)
-                    pub.sendMessage('UpdateMessage', message = f'Record belongs to {event_id}')
-                
+        working_sheet = self.ws.copy()
+        working_sheet = working_sheet[relevant_cols]
+        cols_with_variation = {col: working_sheet[col].nunique() for col in relevant_cols if working_sheet[col].nunique() > 0}
+        generated_events = working_sheet[working_sheet.duplicated(subset = cols_with_variation, keep='first')]
+        event_numbers = [f'{new_event_id[0]}{new_event_id[1]+i}' for i in range(len(generated_sites))]
+        generated_events['Event Number'] = event_numbers
         return generated_events
 
     def _write_persontaxa(self, data, section):
@@ -440,53 +364,18 @@ class ImportTools:
         max = len(data)
         pub.sendMessage('UpdateMessage', message=f'Writing {section}', update_count=2, new_max=max)
         # Writes sites and events to spreadsheet
-        row = 1
-        col = 1
         worksheet = self.data_file[section]
-        if section == 'Event':
-            worksheet.cell(row=row, column=col, value='Event Number')
-        else:
-            worksheet.cell(row=row, column=col, value="Collector's Site ID")
-        first_record = data[list(data.keys())[0]]
-        keys = [key for key in first_record.keys()]
-        for key in data.keys():
-            pub.sendMessage('UpdateMessage', message = f'Writing {key} to Spreadsheet')
-            if row == 1:
-                worksheet.cell(row=row + 1, column=1, value=key)
-            else:
-                worksheet.cell(row=row, column=1, value=key)
-            if row == 1:
-                for i in range(len(keys)):
-                    worksheet.cell(row=row, column=col + 1 + i, value=keys[i])
-                row += 1
-
-            for i in range(len(keys)):
-                if data[key][keys[i]] is None:
-                    continue
-                else:
-                    if isinstance(data[key][keys[i]], list):
-                        names = '; '.join(data[key][keys[i]])
-                        worksheet.cell(row=row, column=col + 1 + i, value=names)
-                    else:
-                        worksheet.cell(row=row, column=col + 1 + i, value=data[key][keys[i]])
-            row += 1
+        for r in dataframe_to_rows(data, index=False, header=True):
+            worksheet.append(r)
         return 0
 
     def _write_locations(self, data, tab):
-        max = len(data)
         pub.sendMessage('UpdateMessage', message=f'Writing Location', update_count=2, new_max=max)
-        row = 1
-        col = 1
         worksheet = self.data_file['Location']
-        for key in data.keys():
-            if row == 1:
-                worksheet.cell(row=row, column=col, value='Location Code')
-                worksheet.cell(row=row, column=col+1, value = 'location_id')
-                row += 1
-
-            worksheet.cell(row=row, column=col, value=key)
-            worksheet.cell(row=row, column=col+1, value=data[key][0])
-            row += 1
+        data = {'Location Code': list(data.keys()), 'location_id': list(data.values())}
+        data_to_write = pandas.DataFrame(data)
+        for r in dataframe_to_rows(data_to_write, index=False, header=True):
+            worksheet.append(r)
         return 0
 
 
@@ -517,7 +406,9 @@ class ImportTools:
                 data = tabs[tab][0](type=tab)
             else:
                 data = tabs[tab][0]()
-            if data == {}:
+            if isinstance(data, pandas.DataFrame) and data.empty:
+                continue
+            elif isinstance(data, dict) and data == {}:
                 continue
             return_value = tabs[tab][1](data, tab)
             if return_value == 1:
