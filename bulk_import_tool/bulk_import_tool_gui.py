@@ -21,13 +21,15 @@ class ImportToolsProgressDialog(wx.ProgressDialog):
         # create a pubsub receiver
         pub.subscribe(self.updateProgress, "UpdateMessage")
 
-    def updateProgress(self, message, update_count=0, new_max=0):
+    def updateProgress(self, message, update_count=3, new_max=0):
         """"""
         if update_count == 1:
             self.count = 0
             self.SetRange(new_max)
         elif update_count == 2:
             self.SetRange(self.GetRange() + new_max)
+        elif update_count == -1:
+            self.count = self.GetRange()
         else:
             self.count += 1
  
@@ -35,6 +37,10 @@ class ImportToolsProgressDialog(wx.ProgressDialog):
             self.Destroy()
  
         self.Update(self.count, message)
+
+    def complete(self):
+        self.updateProgress('COMPLETE!!!', -1)
+
 
 class ToolsWindow(wx.Frame):
     ''' Main window'''
@@ -65,7 +71,7 @@ class ToolsWindow(wx.Frame):
         self.button_7 = wx.Button(self, wx.ID_ANY, "Add IDs")
         self.button_8 = wx.Button(self, wx.ID_ANY, "Write to DB")
         self.impt = ImportTools()
-        self.status = 'Please Load an Import Spreadsheet'
+        self.status = 'Please Select the Discipline'
         self.__set_properties()
         self.__do_layout()
         self.Bind(wx.EVT_MENU, self.OnQuit, quit)
@@ -130,11 +136,18 @@ class ToolsWindow(wx.Frame):
         self.Close()
 
     def OpenFile(self, event):
+        if self.impt.discipline == '':
+            err_dlg = wx.MessageBox('Discipline not selected', 
+                                    'ERROR!!', wx.OK | wx.ICON_ERROR)
+            return 0
         file_dialog = wx.FileDialog(self, "Open Template", wildcard='.xlsx Files (*.xlsx)|*.xlsx',
                                     style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
         file_dialog.Center()
         file_dialog.ShowModal()
-        self.impt._get_file(file_dialog.GetPath())
+        result = self.impt._get_file(file_dialog.GetPath())
+        if result[0] == -1:
+            err_dlg = wx.MessageBox(result[1], 'ERROR!!', wx.OK | wx.ICON_ERROR)
+            return 0
         file_dialog.Destroy()
         self.label_2.SetLabel(self.impt.proc_log[-1])
 
@@ -156,11 +169,16 @@ class ToolsWindow(wx.Frame):
             hhdisc = {'arc': 'archeolg', 'eth': 'ethnolg', 'mod': 'history'}
             self.impt.discipline = hhdisc[self.impt.discipline]
             self.impt.area_cd = 'human'
+        self.label_2.SetLabel('Load Import Spreadsheet')
         event.Skip()
 
     def write_spreadsheet(self, event):
         if self.impt.discipline == '':
             err_dlg = wx.MessageBox('Discipline not selected', 
+                                    'ERROR!!', wx.OK | wx.ICON_ERROR)
+            return 0
+        elif self.impt.ws is None:
+            err_dlg = wx.MessageBox('Spreadsheet not loaded', 
                                     'ERROR!!', wx.OK | wx.ICON_ERROR)
             return 0
         else:
@@ -170,9 +188,11 @@ class ToolsWindow(wx.Frame):
             if write == 0:
                 dialog = wx.MessageBox('Writing Spread sheet is complete', 'Info', 
                               wx.OK | wx.ICON_INFORMATION)
+                prg_dlg.complete()
             else:
                 dialog = wx.MessageBox('Writing Spreadsheet failed', 'Error',
                                        wx.OK|wx.ICON_ERROR)
+                prg_dlg.complete()
                 self.Reload()
                 event.Skip()
         self.impt._write_prog()
@@ -184,6 +204,11 @@ class ToolsWindow(wx.Frame):
             err_dlg = wx.MessageBox('Discipline not selected', 
                                     'ERROR!!', wx.OK | wx.ICON_ERROR)
             return 0
+
+        elif self.impt.ws is None:
+            err_dlg = wx.MessageBox('Spreadsheet not loaded', 
+                                    'ERROR!!', wx.OK | wx.ICON_ERROR)
+            return 0
         prg_dlg = ImportToolsProgressDialog()
         prg_dlg.Show()
         write, message = self.impt._add_ids()
@@ -193,6 +218,7 @@ class ToolsWindow(wx.Frame):
         else:
             dialog = wx.MessageBox('Adding IDs failed! \n {}'.format(write), 'Error',
                                    wx.OK | wx.ICON_ERROR)
+        prg_dlg.Destroy()
         self.impt._write_prog()
         self.Reload()
         event.Skip()
@@ -202,19 +228,28 @@ class ToolsWindow(wx.Frame):
             err_dlg = wx.MessageBox('Discipline not selected', 
                                     'ERROR!!', wx.OK | wx.ICON_ERROR)
             return 0
+        elif self.impt.ws is None:
+            err_dlg = wx.MessageBox('Spreadsheet not loaded', 
+                                    'ERROR!!', wx.OK | wx.ICON_ERROR)
+            return 0
         opt = ['Production', 'Test']
         dialog = wx.SingleChoiceDialog(self, 'Choose which datbase to write to',
                                       'Database Chooser', opt, wx.CHOICEDLG_STYLE)
         if dialog.ShowModal() == wx.ID_OK:
             value = dialog.GetStringSelection()
+        else:
+            return 0
         dialog.Destroy()
         if value == 'Production':
-            self.impt._to_prod()
+            result = self.impt._to_prod()
         else:
-            self.impt._to_test()
+            result = self.impt._to_test()
+
+        if result == -1:
+            err_dlg = wx.MessageBox(result[1], 'ERROR!!', wx.OK | wx.ICON_ERROR)
         processes = ['Full Import',
                      'Write GeographicSites and Collection Events',
-                     'Write Specimen, Person and Taxonomy Data',
+                     'Write Specimen, and Taxonomy Data',
                      'Update Existing Records',
                      'Write Person Data'
                      ]
@@ -223,7 +258,7 @@ class ToolsWindow(wx.Frame):
         if process_dlg.ShowModal() == wx.ID_OK:
             process = process_dlg.GetStringSelection()
         else:
-            wx.MessageBox('Select a Process', "Error", wx.OK | wx.ICON_ERROR)
+            return 0
         process_dlg.Destroy()
         prg_dlg = ImportToolsProgressDialog()
         prg_dlg.Show()
@@ -231,10 +266,10 @@ class ToolsWindow(wx.Frame):
             status = self.impt.write_to_db()
         elif process == 'Write GeographicSites and Collection Events':
             status = self.impt.write_siteevent_to_db()
-        elif process == 'Write Specimen, Person and Taxonomy Data':
-            status = self.impt.write_specimen_taxa_persons_to_db()
+        elif process == 'Write Specimen, and Taxonomy Data':
+            status = self.impt.write_specimen_taxa_to_db()
         elif process == 'Update Existing Records':
-            status = self.impt.write_specimen_taxa_persons_to_db(update=True)
+            status = self.impt.write_specimen_taxa_to_db(update=True)
         elif process == "Write Person Data":
             status = self.impt.write_persons_to_db()
         if status != 0:
@@ -242,7 +277,6 @@ class ToolsWindow(wx.Frame):
             return 0
         prg_dlg.Destroy()
         self.impt._write_prog()
-        self.Reload()
         event.Skip()
 
 

@@ -293,12 +293,6 @@ class BulkImportTest(unittest.TestCase):
 
         self.assertEqual(test_values, values)
 
-    def test_spreadsheet(self):
-        values = self.impt._test_spreadsheet()
-        key_row = self.impt.ws[3]
-        test_values = {key_row[i].value: True for i in range(len(key_row))}
-        self.assertEqual(test_values, values)
-
     def test_check_sheets(self):
         self.assertTrue(self.impt._check_sheets())
 
