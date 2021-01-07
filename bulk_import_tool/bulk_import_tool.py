@@ -6,6 +6,7 @@ from sqlalchemy import exc
 import openpyxl
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils.exceptions import InvalidFileException
+import numpy
 import pandas
 from pubsub import pub
 from datetime import datetime
@@ -56,8 +57,6 @@ class ImportTools:
         self.max_col = self._set_max_col()
         self._set_keys()
         try:
-            self.ws['Date'] = self.ws.Date.astype('datetime64')
-            self.ws['Date Identified'] = self.ws['Date Identified'].astype('datetime64')
             self.ws['Catalogue Number'] = self.ws['Catalogue Number'].astype('str')
         except AttributeError as e:
             print(e)
@@ -462,8 +461,6 @@ class ImportTools:
 
         for r in dataframe_to_rows(self.ws, index=False, header=True):
             self.data_file['IMM_template'].append(r)
-        ws = self.data_file.get_sheet_by_name("Sheet")
-        self.data_file.remove(ws)
         self.data_file.save(self.data_filename)
         self.proc_log.append('Write Spreadsheet')
         return 0 
@@ -1253,6 +1250,8 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', message='Setting Triggers to off',
                         update_count=1, new_max=3)
         self._set_triggers()
+        self.ws['Date'] = self.ws.Date.astype('datetime64')
+        self.ws['Date Identified'] = self.ws['Date Identified'].astype('datetime64')
         with self._engine.connect() as connection:
             with connection.begin():
                 self._import_site(connection)
@@ -1273,6 +1272,8 @@ class ImportTools:
         pub.sendMessage('UpdateMessage', message='Setting Triggers to off',
                         update_count=2, new_max=1)
         self._set_triggers()
+        self.ws['Date'] = self.ws.Date.astype('datetime64')
+        self.ws['Date Identified'] = self.ws['Date Identified'].astype('datetime64')
         with self._engine.connect() as connection:
             with connection.begin():
                 self._import_specimen(connection, update)
