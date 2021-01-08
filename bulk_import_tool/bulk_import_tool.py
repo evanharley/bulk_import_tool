@@ -332,10 +332,14 @@ class ImportTools:
         working_sheet = self.ws.copy()
         working_sheet = working_sheet[relevant_cols]
         cols_with_variation = {col: working_sheet[col].nunique() for col in relevant_cols if working_sheet[col].nunique() > 0}
-        generated_sites = working_sheet[working_sheet.duplicated(subset = cols_with_variation, keep='first')]
+        generated_sites = working_sheet.drop_duplicates(cols_with_variation, keep='first')
         site_col = next((key for key, value in self.keys.items() if value == site_type))
         site_numbers = [f'{new_site_id[0]}{str(int(new_site_id[1])+i)}' for i in range(len(generated_sites))]
         generated_sites[site_col] = site_numbers
+        self.ws.drop("Collector's Site ID", axis= 1, inplace = True)
+        index = relevant_cols.index("Collector's Site ID")
+        relevant_cols = [relevant_cols[i] for i in range(len(relevant_cols)) if i != index]
+        self.ws = pandas.merge(self.ws, generated_sites, on = relevant_cols)
         return generated_sites
 
     def _get_max_site_id(self):
@@ -381,9 +385,13 @@ class ImportTools:
         working_sheet = self.ws.copy()
         working_sheet = working_sheet[relevant_cols]
         cols_with_variation = {col: working_sheet[col].nunique() for col in relevant_cols if working_sheet[col].nunique() > 0}
-        generated_events = working_sheet[working_sheet.duplicated(subset = cols_with_variation, keep='first')]
+        generated_events = working_sheet.drop_duplicates(cols_with_variation, keep='first')
         event_numbers = [f'{new_event_id[0]}{int(new_event_id[1])+i}' for i in range(len(generated_events))]
         generated_events['Event Number'] = event_numbers
+        self.ws.drop('Event Number', inplace=True, axis=1)
+        index = relevant_cols.index('Event Number')
+        relevant_cols = [relevant_cols[i] for i in range(len(relevant_cols)) if i != index]
+        self.ws = pandas.merge(self.ws, generated_events, on=relevant_cols)
         return generated_events
 
     def _write_persontaxa(self, data, section):
